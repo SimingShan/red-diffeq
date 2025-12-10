@@ -1,0 +1,150 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# Project-specific
+*.pt  # PyTorch model checkpoints
+*.pth
+*.ckpt
+
+# Diagnostic and test files
+test_*.py
+check_*.py
+diagnose_*.py
+verify_*.py
+trace_*.py
+COMPREHENSIVE_AUDIT.py
+*_BUGS_*.md
+*_FIX_*.md
+*_COMPLETE.md
+*_REPORT.md
+PATCH_*.md
+QUICK_REFERENCE.md
+Makefile
+diagnostic_*.png
+weight_map_*.png
+gradient_flow_*.png
+simulated_field_*.png
+paper_plots.ipynb
+
+# Experiment outputs
+experiment/*/
+!experiment/.gitkeep
+
+# Data files (large datasets)
+dataset/
+data/
+*.npy
+*.npz
+!tests/fixtures/*.npy
+!tests/fixtures/*.npz
+
+# Results and logs
+results/
+logs/
+*.log
+tensorboard/
+
+# LaTeX auxiliary files
+*.aux
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.tex  # Uncomment if .tex files are generated outputs
+*.pdf  # Uncomment if PDFs are generated outputs
+
+# Temporary files
+*.tmp
+*.bak
+*_OLD
+*_old
+*.backup
+
+# OS-specific
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Editor backups
+*~
+\#*\#
+.\#*
