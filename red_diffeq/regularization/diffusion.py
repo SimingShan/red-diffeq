@@ -45,8 +45,19 @@ class RED_DiffEq:
         w_t = torch.sqrt((1.0 - gamma_t) / gamma_t)
         return tensor * w_t
 
-    def get_reg_loss(self, mu: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def get_reg_loss(self, mu: torch.Tensor, seed: int = None) -> Tuple[torch.Tensor, torch.Tensor]:
         batch_size = mu.shape[0]
+
+        if seed is not None:
+            # Save current RNG state
+            rng_state = torch.get_rng_state()
+            if torch.cuda.is_available():
+                cuda_rng_state = torch.cuda.get_rng_state()
+            
+            # Set manual seed
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed(seed)
 
         if self.share_noise_across_batch:
             time_tensor = torch.randint(
@@ -63,6 +74,12 @@ class RED_DiffEq:
             )
 
             noise = torch.randn_like(mu)
+
+        if seed is not None:
+            # Restore RNG state
+            torch.set_rng_state(rng_state)
+            if torch.cuda.is_available():
+                torch.cuda.set_rng_state(cuda_rng_state)
 
         mu_padded = diffusion_pad(mu)
         noise_padded = diffusion_pad(noise)

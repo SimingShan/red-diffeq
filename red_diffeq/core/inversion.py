@@ -26,7 +26,8 @@ class InversionEngine:
     def optimize(self, mu: torch.Tensor, mu_true: torch.Tensor, y: torch.Tensor,
                 fwi_forward, ts: int = 300, lr: float = 0.03, reg_lambda: float = 0.01,
                 noise_std: float = 0.0, noise_type: str = 'gaussian',
-                missing_number: int = 0, regularization: Optional[str] = None):
+                missing_number: int = 0, regularization: Optional[str] = None,
+                random_seed: Optional[int] = None):
         if mu.shape[0] != y.shape[0]:
             raise ValueError('Batch size mismatch between velocity and seismic data')
         if regularization not in ['diffusion', 'l2', 'tv', 'hybrid', None]:
@@ -70,10 +71,12 @@ class InversionEngine:
 
         pbar = tqdm(range(ts), desc='Optimizing', unit='step')
         for step in pbar:
+            current_seed = random_seed + step if random_seed is not None else None
+            
             predicted_seismic = fwi_forward(mu)
             loss_obs = loss_calc.observation_loss(predicted_seismic, y)
 
-            reg_loss = loss_calc.regularization_loss(mu)
+            reg_loss = loss_calc.regularization_loss(mu, seed=current_seed)
 
             total_loss = loss_calc.total_loss(loss_obs, reg_loss, reg_lambda)
 

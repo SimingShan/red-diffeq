@@ -27,15 +27,14 @@ diffusion:
   timesteps: 1000
   sampling_timesteps: 250
   objective: pred_noise
-  model_path: pretrained_models/model-3.pt
+  model_path: pretrained_models/model-2.pt
 
 # Optimization (Adam + Cosine Annealing + L1 Loss - always)
 optimization:
   lr: 0.03
   ts: 300
-  regularization: none  # Options: diffusion, tv, l2, none, null
+  regularization: diffusion  # Options: diffusion, tv, l2, none, null
   reg_lambda: 0.75
-  use_time_weight: false  # If true, use time-dependent weight w(t) in RED regularizer. If false (default), drop w(t) and use constant λ (empirical variant)
   sigma: 10.0
   initial_type: smoothed  # Options: smoothed, homogeneous, linear
   noise_std: 0.0
@@ -46,13 +45,13 @@ optimization:
 data:
   seismic_data_dir: dataset/OpenFWI/Seismic_Data/
   velocity_data_dir: dataset/OpenFWI/Velocity_Data/
-  batch_size: 1
+  batch_size: 34
   data_pattern: "*.npy"
   use_mmap: true
 
 # Experiment Metadata
 experiment:
-  name: red_diffeq_default
+  name: pretrained_model_comparison_2
   results_dir: experiment/
   save_intermediate: false
   log_interval: 10

@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from typing import Optional
 
 from red_diffeq.regularization.base import RegularizationMethod
 
@@ -25,16 +26,17 @@ class LossCalculator:
         loss = loss.mean(dim=tuple(range(1, len(loss.shape))))
         return loss
 
-    def regularization_loss(self, mu: torch.Tensor) -> torch.Tensor:
+    def regularization_loss(self, mu: torch.Tensor, seed: Optional[int] = None) -> torch.Tensor:
         """Compute regularization loss.
 
         Args:
             mu: Velocity model (batch, 1, height, width)
+            seed: Optional random seed for deterministic noise sampling
 
         Returns:
             Per-model regularization loss (batch_size,)
         """
-        return self.regularization_method.get_reg_loss(mu)
+        return self.regularization_method.get_reg_loss(mu, seed=seed)
 
     def total_loss(self, obs_loss: torch.Tensor, reg_loss: torch.Tensor, reg_lambda: float) -> torch.Tensor:
         """Compute total loss = observation + λ * regularization.

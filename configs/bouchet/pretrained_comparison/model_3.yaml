@@ -27,7 +27,7 @@ diffusion:
   timesteps: 1000
   sampling_timesteps: 250
   objective: pred_noise
-  model_path: pretrained_models/model-2.pt
+  model_path: pretrained_models/model-3.pt
 
 # Optimization (Adam + Cosine Annealing + L1 Loss - always)
 optimization:
@@ -39,21 +39,21 @@ optimization:
   initial_type: smoothed  # Options: smoothed, homogeneous, linear
   noise_std: 0.0
   noise_type: gaussian  # gaussian or laplace
-  missing_number: 0
+  missing_number: 0.0
 
 # Data Configuration
 data:
   seismic_data_dir: dataset/OpenFWI/Seismic_Data/
   velocity_data_dir: dataset/OpenFWI/Velocity_Data/
-  batch_size: 20
+  batch_size: 34
   data_pattern: "*.npy"
   use_mmap: true
 
 # Experiment Metadata
 experiment:
-  name: pretrained_model_comparison_2
+  name: pretrained_model_comparison_3
   results_dir: experiment/
   save_intermediate: false
   log_interval: 10
   save_metrics: true
-  random_seed: null
+  random_seed: 8888

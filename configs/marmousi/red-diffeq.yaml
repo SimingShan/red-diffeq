@@ -25,7 +25,7 @@ diffusion:
   timesteps: 1000
   sampling_timesteps: 250
   objective: pred_noise
-  model_path: pretrained_models/model-4.pt
+  model_path: pretrained_models/model-3.pt
 
 optimization:
   lr: 0.03
@@ -53,5 +53,5 @@ experiment:
   save_intermediate: false
   log_interval: 10
   save_metrics: true
-  random_seed: 1234
+  random_seed: 8888
 

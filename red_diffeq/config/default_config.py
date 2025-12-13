@@ -31,9 +31,10 @@ def get_config():
     config.optimization = ml_collections.ConfigDict()
     config.optimization.lr = 0.03
     config.optimization.ts = 300
+    config.optimization.diffusion_ts = 1
     config.optimization.regularization = 'diffusion'
     config.optimization.reg_lambda = 0.75
-    config.optimization.use_time_weight = True
+    config.optimization.use_time_weight = False
     config.optimization.share_noise_across_batch = False
     config.optimization.sigma = 10.0
     config.optimization.initial_type = 'smoothed'

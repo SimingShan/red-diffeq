@@ -134,6 +134,7 @@ def process_batch(
         regularization=config.optimization.regularization
         if config.optimization.regularization and config.optimization.regularization != "none"
         else None,
+        random_seed=config.experiment.random_seed,
     )
 
     return mu_batch, final_results_per_model, initial_model_batch, vel_batch
@@ -186,14 +187,8 @@ def run_experiment(config: ml_collections.ConfigDict) -> None:
     device = setup_device()
 
     if config.experiment.random_seed is not None:
-        torch.manual_seed(config.experiment.random_seed)
-        torch.cuda.manual_seed(config.experiment.random_seed)
-        torch.cuda.manual_seed_all(config.experiment.random_seed)
-        np.random.seed(config.experiment.random_seed)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-        print(f"Random seed set to: {config.experiment.random_seed}")
-        print(f"Deterministic mode enabled (cuDNN.deterministic=True)")
+        from red_diffeq.utils.seed_utils import set_seed
+        set_seed(config.experiment.random_seed, verbose=True)
 
     print("Initializing models...")
     diffusion = load_diffusion_model(config, device)

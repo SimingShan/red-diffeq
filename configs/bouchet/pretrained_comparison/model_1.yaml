@@ -45,7 +45,7 @@ optimization:
 data:
   seismic_data_dir: dataset/OpenFWI/Seismic_Data/
   velocity_data_dir: dataset/OpenFWI/Velocity_Data/
-  batch_size: 20
+  batch_size: 34
   data_pattern: "*.npy"
   use_mmap: true
 
@@ -56,4 +56,4 @@ experiment:
   save_intermediate: false
   log_interval: 10
   save_metrics: true
-  random_seed: null
+  random_seed: 8888

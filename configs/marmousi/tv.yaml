@@ -53,5 +53,5 @@ experiment:
   save_intermediate: false
   log_interval: 10
   save_metrics: true
-  random_seed: 1234
+  random_seed: 8888
 
