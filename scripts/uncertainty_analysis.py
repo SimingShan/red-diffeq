@@ -553,6 +553,7 @@ def main():
         and config.optimization.regularization != RegularizationType.NONE
         else None,
         use_time_weight=getattr(config.optimization, 'use_time_weight', False),
+        sigma_x0=getattr(config.optimization, 'sigma_x0', 0.0001),
     )
     
     # Process each dataset family

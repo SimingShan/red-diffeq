@@ -24,6 +24,17 @@ pip-wheel-metadata/
 share/python-wheels/
 *.egg-info/
 .installed.cfg
+/OLD_CF
+/OLD_CV
+/OLD_FF
+/OLD_FV
+/ilvrefwi
+/to_be_converted
+/pretrained_models
+/code
+/experiment
+/paper_plots
+temp.ipynb
 *.egg
 MANIFEST
 *.pt

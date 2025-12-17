@@ -33,6 +33,7 @@ optimization:
   use_time_weight: false
   share_noise_across_batch: false
   sigma: 10.0
+  sigma_x0: 0.0001
   initial_type: smoothed
   noise_std: 0.0
   noise_type: gaussian
@@ -44,6 +45,8 @@ data:
   batch_size: 34
   data_pattern: "*.npy"
   use_mmap: true
+  openfwi_families: null  # List of families to process (e.g., [CF, CV] or [CF.npy, CV.npy]), null/None to process all
+  sample_index: null  # Process only a specific sample index (0-indexed), null/None to process all samples
 
 experiment:
   name: openfwi_model_4
@@ -51,6 +54,6 @@ experiment:
   save_intermediate: false
   log_interval: 10
   save_metrics: true
-  random_seed: 8888
+  random_seed: null
 
 

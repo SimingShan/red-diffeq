@@ -35,6 +35,7 @@ optimization:
   use_time_weight: false
   share_noise_across_batch: false
   sigma: 20.0
+  sigma_x0: 0.0001
   initial_type: smoothed
   noise_std: 0.0
   noise_type: gaussian

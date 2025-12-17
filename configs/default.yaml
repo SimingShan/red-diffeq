@@ -37,6 +37,7 @@ optimization:
   reg_lambda: 0.75
   use_time_weight: false  # If true, use time-dependent weight w(t) in RED regularizer. If false (default), drop w(t) and use constant λ (empirical variant)
   sigma: 10.0
+  sigma_x0: 0.0001  # Pre-noise added to mu before diffusion forward process (for noise robustness)
   initial_type: smoothed  # Options: smoothed, homogeneous, linear
   noise_std: 0.0
   noise_type: gaussian  # gaussian or laplace
@@ -49,6 +50,7 @@ data:
   batch_size: 1
   data_pattern: "*.npy"
   use_mmap: true
+  openfwi_families: null  # List of families to process (e.g., [CF, CV] or [CF.npy, CV.npy]), null/None to process all
 
 # Experiment Metadata
 experiment:

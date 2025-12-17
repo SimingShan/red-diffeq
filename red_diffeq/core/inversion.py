@@ -13,14 +13,16 @@ class InversionEngine:
 
     def __init__(self, diffusion_model, data_transformer: DataTransformer,
                  ssim_loss: SSIM, regularization: Optional[str] = None,
-                 use_time_weight: bool = False, share_noise_across_batch: bool = False):
+                 use_time_weight: bool = False, share_noise_across_batch: bool = False,
+                 sigma_x0: float = 0.0001):
         self.diffusion_model = diffusion_model
         self.data_transformer = data_transformer
         self.ssim_loss = ssim_loss
         self.device = diffusion_model.device
+        self.sigma_x0 = sigma_x0  # Store for use in forward modeling
         self.regularization_method = RegularizationMethod(
             regularization, diffusion_model, use_time_weight=use_time_weight,
-            share_noise_across_batch=share_noise_across_batch
+            share_noise_across_batch=share_noise_across_batch, sigma_x0=sigma_x0
         )
 
     def optimize(self, mu: torch.Tensor, mu_true: torch.Tensor, y: torch.Tensor,
@@ -43,9 +45,12 @@ class InversionEngine:
             share_noise_across_batch = getattr(
                 self.regularization_method, 'share_noise_across_batch', False
             ) if hasattr(self, 'regularization_method') else False
+            sigma_x0 = getattr(
+                self.regularization_method, 'sigma_x0', 0.0001
+            ) if hasattr(self, 'regularization_method') else 0.0001
             self.regularization_method = RegularizationMethod(
                 regularization, self.diffusion_model, use_time_weight=use_time_weight,
-                share_noise_across_batch=share_noise_across_batch
+                share_noise_across_batch=share_noise_across_batch, sigma_x0=sigma_x0
             )
 
         batch_size = mu.shape[0]
@@ -72,11 +77,48 @@ class InversionEngine:
         pbar = tqdm(range(ts), desc='Optimizing', unit='step')
         for step in pbar:
             current_seed = random_seed + step if random_seed is not None else None
-            
-            predicted_seismic = fwi_forward(mu)
+
+            # Create x0_pred with small perturbation ONLY for diffusion regularization
+            # This matches the original implementation exactly
+            if regularization == 'diffusion':
+                # Get sigma_x0 from regularization method
+                sigma_x0 = getattr(self.regularization_method, 'sigma_x0', 0.0001)
+
+                # Handle seed for noise_x0 generation
+                # Use a different seed offset to ensure independence from regularization noise
+                if current_seed is not None:
+                    # Save current RNG state
+                    rng_state = torch.get_rng_state()
+                    if torch.cuda.is_available():
+                        cuda_rng_state = torch.cuda.get_rng_state()
+                    # Use offset seed for noise_x0 to ensure independence from regularization
+                    noise_x0_seed = current_seed + 1000000
+                    torch.manual_seed(noise_x0_seed)
+                    if torch.cuda.is_available():
+                        torch.cuda.manual_seed(noise_x0_seed)
+
+                noise_x0 = torch.randn_like(mu)
+                x0_pred = mu + sigma_x0 * noise_x0
+
+                if current_seed is not None:
+                    # Restore RNG state (regularization_loss will set its own seed)
+                    torch.set_rng_state(rng_state)
+                    if torch.cuda.is_available():
+                        torch.cuda.set_rng_state(cuda_rng_state)
+            else:
+                # For non-diffusion regularization (TV, L2, or None), use mu directly
+                x0_pred = mu
+
+            # Use x0_pred for forward modeling (matching old implementation)
+            # CRITICAL: Crop to 70×70 before forward modeling (original: x0_pred[:, :, 1:-1, 1:-1])
+            # mu is 72×72, crop inner region for FWI
+            # Both forward modeling and regularization use the SAME x0_pred
+            predicted_seismic = fwi_forward(x0_pred[:, :, 1:-1, 1:-1])
             loss_obs = loss_calc.observation_loss(predicted_seismic, y)
 
-            reg_loss = loss_calc.regularization_loss(mu, seed=current_seed)
+            # CRITICAL FIX: Pass x0_pred (not mu) to ensure consistent perturbation
+            # between forward modeling and regularization
+            reg_loss = loss_calc.regularization_loss(x0_pred, seed=current_seed)
 
             total_loss = loss_calc.total_loss(loss_obs, reg_loss, reg_lambda)
 
@@ -89,7 +131,8 @@ class InversionEngine:
 
             scheduler.step()
 
-            mae, rmse, ssim = metrics_calc.calculate(mu, mu_true)
+            # Metrics calculated on cropped 70×70 region (matching original)
+            mae, rmse, ssim = metrics_calc.calculate(mu[:, :, 1:-1, 1:-1], mu_true)
 
             metrics_history['total_losses'].append(total_loss.detach().cpu().numpy())
             metrics_history['obs_losses'].append(loss_obs.detach().cpu().numpy())
@@ -99,9 +142,8 @@ class InversionEngine:
             metrics_history['rmse'].append(rmse.detach().cpu().numpy())
 
             pbar.set_postfix({
-                'total_loss': total_loss.sum().item() / batch_size,
-                'obs_loss': loss_obs.sum().item() / batch_size,
-                'reg_loss': reg_loss.mean().item(),
+                'MAE': mae.mean().item(),
+                'RMSE': rmse.mean().item(),
                 'SSIM': ssim.mean().item()
             })
 
@@ -118,4 +160,6 @@ class InversionEngine:
             }
             final_results_per_model.append(model_results)
 
-        return mu, final_results_per_model
+        # Return cropped 70×70 mu (matching original: mu[:, :, 1:-1, 1:-1])
+        mu_cropped = mu[:, :, 1:-1, 1:-1]
+        return mu_cropped, final_results_per_model

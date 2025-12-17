@@ -29,10 +29,11 @@ def calculate_patches(width: int, height: int) -> Tuple[List[Tuple[int, int]], L
 
 class RED_DiffEq:
 
-    def __init__(self, diffusion_model, use_time_weight: bool = False, share_noise_across_batch: bool = False):
+    def __init__(self, diffusion_model, use_time_weight: bool = False, share_noise_across_batch: bool = False, sigma_x0: float = 0.0001):
         self.diffusion_model = diffusion_model
         self.use_time_weight = use_time_weight
         self.share_noise_across_batch = share_noise_across_batch
+        self.sigma_x0 = sigma_x0
 
         image_size = getattr(diffusion_model, 'image_size', 72)
         self.input_size = image_size[0] if isinstance(image_size, (tuple, list)) else image_size
@@ -46,6 +47,12 @@ class RED_DiffEq:
         return tensor * w_t
 
     def get_reg_loss(self, mu: torch.Tensor, seed: int = None) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Compute regularization loss using diffusion model.
+
+        IMPORTANT: The input 'mu' is actually x0_pred (already perturbed in inversion.py).
+        This ensures the SAME perturbation is used for both forward modeling and regularization,
+        matching the original implementation's behavior.
+        """
         batch_size = mu.shape[0]
 
         if seed is not None:
@@ -53,7 +60,7 @@ class RED_DiffEq:
             rng_state = torch.get_rng_state()
             if torch.cuda.is_available():
                 cuda_rng_state = torch.cuda.get_rng_state()
-            
+
             # Set manual seed
             torch.manual_seed(seed)
             if torch.cuda.is_available():
@@ -81,23 +88,32 @@ class RED_DiffEq:
             if torch.cuda.is_available():
                 torch.cuda.set_rng_state(cuda_rng_state)
 
-        mu_padded = diffusion_pad(mu)
-        noise_padded = diffusion_pad(noise)
+        # Use mu directly as x0_pred (already perturbed in inversion.py)
+        # DO NOT create a new perturbation here - this was the bug!
+        # IMPORTANT: mu is now 72×72 (padded in run_inversion.py), matching original
+        # NO need to pad/crop - use directly
+        x0_pred = mu
 
-        x_t = self.diffusion_model.q_sample(mu_padded, t=time_tensor, noise=noise_padded)
+        x_t = self.diffusion_model.q_sample(x0_pred, t=time_tensor, noise=noise)
 
-        with torch.no_grad():
-            predictions = self.diffusion_model.model_predictions(
-                x_t, t=time_tensor, x_self_cond=None,
-                clip_x_start=True, rederive_pred_noise=True
-            )
+        # CRITICAL: Do NOT use torch.no_grad() here to match original implementation
+        # Original allows gradients to flow through model predictions
+        predictions = self.diffusion_model.model_predictions(
+            x_t, t=time_tensor, x_self_cond=None,
+            clip_x_start=True, rederive_pred_noise=True
+        )
 
-        pred_noise = diffusion_crop(predictions.pred_noise.detach())
-        noise_cropped = diffusion_crop(noise_padded.detach())
+        # Do NOT detach to match original: et = pred_noise (without .detach())
+        # pred_noise is 72×72, use directly (matching original)
+        pred_noise = predictions.pred_noise
 
-        gradient_field = pred_noise - noise_cropped
+        # Use original noise tensor (matching official RED-Diff implementation)
+        # Original code: noise_xt = torch.randn_like(mu) then uses it directly
+        # Both pred_noise and noise are 72×72
+        gradient_field = pred_noise - noise
 
-        reg_field = gradient_field * mu
+        # Use x0_pred for gradient computation to match old implementation
+        reg_field = gradient_field * x0_pred
 
         reg_field = self._apply_time_weight(reg_field, time_tensor)
 
@@ -107,6 +123,10 @@ class RED_DiffEq:
         return reg_per_model, gradient_per_model
 
     def get_reg_loss_patched(self, mu: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Compute regularization loss using patched diffusion model for large inputs.
+
+        IMPORTANT: The input 'mu' is actually x0_pred (already perturbed in inversion.py).
+        """
         batch_size = mu.shape[0]
         height = mu.shape[2]
         width = mu.shape[3]
@@ -129,30 +149,39 @@ class RED_DiffEq:
 
             noise = torch.randn_like(mu)
 
+        # Use mu directly as x0_pred (already perturbed in inversion.py)
+        # DO NOT create a new perturbation here - this was the bug!
+        # NOTE: This patched version is for inputs > 72×72
+        # For standard 72×72 inputs, get_reg_loss() is used instead
+        x0_pred = mu
+
         gradient_field = torch.zeros_like(mu)
         weight_map = torch.zeros_like(mu)
 
         for patch_idx, (start_x, end_x) in enumerate(patch_positions):
-            mu_patch = mu[:, :, :, start_x:end_x]
-
+            x0_pred_patch = x0_pred[:, :, :, start_x:end_x]
             noise_patch = noise[:, :, :, start_x:end_x]
 
-            mu_patch_padded = diffusion_pad(mu_patch)
+            # For patches, we may still need padding if patch size < 72×72
+            # This code path is only used for very large models
+            x0_pred_patch_padded = diffusion_pad(x0_pred_patch)
             noise_patch_padded = diffusion_pad(noise_patch)
 
             x_t = self.diffusion_model.q_sample(
-                mu_patch_padded, t=time_tensor, noise=noise_patch_padded
+                x0_pred_patch_padded, t=time_tensor, noise=noise_patch_padded
             )
 
-            with torch.no_grad():
-                predictions = self.diffusion_model.model_predictions(
-                    x_t, t=time_tensor, x_self_cond=None,
-                    clip_x_start=True, rederive_pred_noise=True
-                )
+            # CRITICAL: Do NOT use torch.no_grad() here to match original implementation
+            predictions = self.diffusion_model.model_predictions(
+                x_t, t=time_tensor, x_self_cond=None,
+                clip_x_start=True, rederive_pred_noise=True
+            )
 
-            pred_noise_patch = diffusion_crop(predictions.pred_noise.detach())
-            noise_patch_cropped = diffusion_crop(noise_patch_padded.detach())
+            # Do NOT detach to match original
+            pred_noise_patch = diffusion_crop(predictions.pred_noise)
+            noise_patch_cropped = diffusion_crop(noise_patch_padded)
 
+            # Use original noise tensor (matching official RED-Diff implementation)
             gradient_patch = pred_noise_patch - noise_patch_cropped
 
             patch_width = end_x - start_x
@@ -171,7 +200,8 @@ class RED_DiffEq:
 
         gradient_field = gradient_field / weight_map.clamp(min=1e-8)
 
-        reg_field = gradient_field * mu
+        # Use x0_pred (mu + pre-noise) for gradient computation to match old implementation
+        reg_field = gradient_field * x0_pred
 
         reg_field = self._apply_time_weight(reg_field, time_tensor)
 

@@ -27,6 +27,7 @@ tqdm==4.65.0
 pydantic==2.10.4
 wandb==0.19.4
 PyYAML==6.0.1
+ml-collections==1.1.0
 fsspec==2024.5.0
 filelock==3.14.0
 safetensors==0.4.4

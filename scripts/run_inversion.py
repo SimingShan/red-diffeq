@@ -10,6 +10,8 @@ import argparse
 import numpy as np
 import torch
 from tqdm import tqdm
+from accelerate import Accelerator
+from torch.optim import Adam
 
 from red_diffeq import (
     load_config,
@@ -36,6 +38,7 @@ def setup_device() -> torch.device:
 
 
 def load_diffusion_model(config: ml_collections.ConfigDict, device: torch.device) -> GaussianDiffusion:
+    """Load diffusion model with Accelerator and mixed precision (matching old implementation)."""
     model = Unet(
         dim=config.model.dim,
         dim_mults=config.model.dim_mults,
@@ -51,6 +54,23 @@ def load_diffusion_model(config: ml_collections.ConfigDict, device: torch.device
         objective=config.diffusion.objective,
     ).to(device)
 
+    # Use Accelerator with mixed precision (fp16) to match old implementation
+    # This may affect numerical precision and could explain noise sensitivity differences
+    accelerator = Accelerator(
+        split_batches=True,
+        mixed_precision='fp16'
+    )
+    
+    # Create a dummy optimizer (Accelerator requires it, but we're not training)
+    opt = Adam(diffusion.parameters(), lr=20, betas=(0.9, 0.99))
+    
+    # Prepare model and optimizer with accelerator
+    diffusion, opt = accelerator.prepare(diffusion, opt)
+    
+    # Unwrap model (remove accelerator wrapper)
+    diffusion = accelerator.unwrap_model(diffusion)
+
+    # Load pretrained weights
     model_path = Path(config.diffusion.model_path)
     if model_path.exists():
         checkpoint = torch.load(model_path, map_location=device)
@@ -90,7 +110,39 @@ def get_data_files(config: ml_collections.ConfigDict) -> list:
     if not family_files:
         raise ValueError(f"No data files found matching {pattern} in {seismic_dir}")
 
-    return [f.name for f in family_files]
+    all_families = [f.name for f in family_files]
+    
+    # Filter by openfwi_families if specified
+    openfwi_families = getattr(config.data, 'openfwi_families', None)
+    if openfwi_families is not None:
+        # Handle empty list (process all)
+        if isinstance(openfwi_families, list) and len(openfwi_families) == 0:
+            return all_families
+        
+        # Convert to list if single value
+        if isinstance(openfwi_families, str):
+            openfwi_families = [openfwi_families]
+        
+        # Add .npy extension if not present
+        filtered_families = []
+        for family in openfwi_families:
+            if family is None:
+                continue
+            if not family.endswith('.npy'):
+                family = f"{family}.npy"
+            filtered_families.append(family)
+        
+        if not filtered_families:
+            # If all were None or empty, process all
+            return all_families
+        
+        # Filter to only include specified families
+        all_families = [f for f in all_families if f in filtered_families]
+        
+        if not all_families:
+            raise ValueError(f"None of the specified families {openfwi_families} were found. Available families: {[f.name for f in family_files]}")
+    
+    return all_families
 
 
 def process_batch(
@@ -116,6 +168,10 @@ def process_batch(
             config.optimization.initial_type,
             sigma=config.optimization.sigma,
         )
+        # CRITICAL: Pad to 72×72 to match original implementation
+        # Original code: F.pad(initial_model, (1, 1, 1, 1), "constant", 0)
+        # This ensures mu is optimized in 72×72 space that diffusion model expects
+        initial_model = torch.nn.functional.pad(initial_model, (1, 1, 1, 1), "constant", 0)
         initial_models.append(initial_model)
 
     initial_model_batch = torch.cat(initial_models, dim=0)
@@ -149,9 +205,11 @@ def save_batch_results(
     vel_batch: torch.Tensor,
     output_dir: Path,
 ) -> None:
+    # mu_batch is already cropped to 70×70 (returned from optimize())
     mu_batch_np = mu_batch.detach().cpu().numpy()
     vel_batch_np = vel_batch.cpu().numpy()
-    initial_model_batch_np = initial_model_batch.detach().cpu().numpy()
+    # initial_model_batch is 72×72, crop to 70×70 for saving (matching original)
+    initial_model_batch_np = initial_model_batch[:, :, 1:-1, 1:-1].detach().cpu().numpy()
 
     for i, model_idx in enumerate(range(batch_start, batch_end)):
         mu_result_2d = mu_batch_np[i, 0, :, :]
@@ -203,6 +261,7 @@ def run_experiment(config: ml_collections.ConfigDict) -> None:
         config.optimization.regularization if config.optimization.regularization else None,
         use_time_weight=getattr(config.optimization, 'use_time_weight', False),
         share_noise_across_batch=getattr(config.optimization, 'share_noise_across_batch', False),
+        sigma_x0=getattr(config.optimization, 'sigma_x0', 0.0001),
     )
 
     seismic_dir = Path(config.data.seismic_data_dir).resolve()
@@ -240,14 +299,29 @@ def run_experiment(config: ml_collections.ConfigDict) -> None:
         vel_mmap = np.load(velocity_path, mmap_mode="r")
         num_models = seis_mmap.shape[0]
 
-        print(f"Number of models: {num_models}")
-        print(f"Batch size: {config.data.batch_size}")
-
-        num_batches = (num_models + config.data.batch_size - 1) // config.data.batch_size
+        # Check if sample_index is specified
+        sample_index = getattr(config.data, 'sample_index', None)
+        if sample_index is not None:
+            if sample_index < 0 or sample_index >= num_models:
+                print(f"Warning: sample_index {sample_index} is out of range [0, {num_models-1}]. Skipping {family_name}.")
+                continue
+            print(f"Processing only sample {sample_index} (out of {num_models} samples)")
+            # Process only this one sample - set batch_start and batch_end to this sample
+            batch_start = sample_index
+            batch_end = sample_index + 1
+            num_batches = 1
+        else:
+            # Process all samples
+            print(f"Number of models: {num_models}")
+            print(f"Batch size: {config.data.batch_size}")
+            num_batches = (num_models + config.data.batch_size - 1) // config.data.batch_size
 
         for batch_idx in tqdm(range(num_batches), desc="Batches"):
-            batch_start = batch_idx * config.data.batch_size
-            batch_end = min(batch_start + config.data.batch_size, num_models)
+            if sample_index is None:
+                # Normal batching
+                batch_start = batch_idx * config.data.batch_size
+                batch_end = min(batch_start + config.data.batch_size, num_models)
+            # else: batch_start and batch_end are already set above
 
             mu_batch, results, initial_batch, vel_batch = process_batch(
                 batch_start,
@@ -303,10 +377,13 @@ def main() -> None:
     )
     parser.add_argument("--noise_std", type=float, help="Noise standard deviation (Gaussian) or scale (Laplace)")
     parser.add_argument("--sigma", type=float, help="Initial model smoothing sigma")
+    parser.add_argument("--sigma_x0", type=float, help="Pre-noise added to mu before diffusion forward process (for noise robustness, default: 0.0001)")
     parser.add_argument("--missing_number", type=int, help="Number of missing traces")
     parser.add_argument("--batch_size", type=int, help="Batch size")
     parser.add_argument("--experiment_name", type=str, help="Experiment name")
     parser.add_argument("--random_seed", type=int, help="Random seed")
+    parser.add_argument("--openfwi_families", type=str, nargs="+", help="OpenFWI families to process (e.g., CF CV or CF.npy CV.npy). Default: process all families")
+    parser.add_argument("--sample_index", type=int, default=None, help="Process only a specific sample index (0-indexed). Default: process all samples")
 
     args = parser.parse_args()
 
@@ -332,6 +409,8 @@ def main() -> None:
         config.optimization.noise_std = args.noise_std
     if args.sigma is not None:
         config.optimization.sigma = args.sigma
+    if args.sigma_x0 is not None:
+        config.optimization.sigma_x0 = args.sigma_x0
     if args.missing_number is not None:
         config.optimization.missing_number = args.missing_number
     if args.batch_size is not None:
@@ -340,6 +419,11 @@ def main() -> None:
         config.experiment.name = args.experiment_name
     if args.random_seed is not None:
         config.experiment.random_seed = args.random_seed
+    if args.openfwi_families is not None:
+        config.data.openfwi_families = args.openfwi_families
+    
+    if args.sample_index is not None:
+        config.data.sample_index = args.sample_index
 
     run_experiment(config)
 
