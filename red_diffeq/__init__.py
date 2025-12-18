@@ -6,7 +6,7 @@ from red_diffeq.solvers.pde import FWIForward
 from red_diffeq.regularization.diffusion import RED_DiffEq, RED_DiffEq_POST_PROCESS
 from red_diffeq.regularization.benchmark import total_variation_loss, tikhonov_loss
 from red_diffeq.regularization.base import RegularizationMethod
-from red_diffeq.utils.data_trans import DataTransformer, prepare_initial_model, v_denormalize, v_normalize, s_normalize_none
+from red_diffeq.utils.data_trans import prepare_initial_model, v_denormalize, v_normalize, s_normalize_none
 from red_diffeq.utils.ssim import SSIM
 from red_diffeq.utils.seed_utils import set_seed, SeedContext, get_rng_state, set_rng_state, worker_init_fn
 __all__ = [
@@ -25,7 +25,6 @@ __all__ = [
     'total_variation_loss',
     'tikhonov_loss',
     'RegularizationMethod',
-    'DataTransformer',
     'prepare_initial_model',
     'v_denormalize',
     'v_normalize',

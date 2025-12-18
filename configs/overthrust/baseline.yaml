@@ -33,7 +33,6 @@ optimization:
   regularization: none
   reg_lambda: 0.0
   use_time_weight: false
-  share_noise_across_batch: false
   sigma: 20.0
   initial_type: smoothed
   noise_std: 0.0

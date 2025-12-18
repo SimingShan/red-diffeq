@@ -25,6 +25,8 @@ from accelerate import Accelerator
 from denoising_diffusion_pytorch.attend import Attend
 from denoising_diffusion_pytorch.fid_evaluation import FIDEvaluation
 from denoising_diffusion_pytorch.version import __version__
+from red_diffeq.utils.diffusion_utils import extract
+
 ModelPrediction = namedtuple('ModelPrediction', ['pred_noise', 'pred_x_start'])
 
 def exists(x):
@@ -298,10 +300,6 @@ class Unet(nn.Module):
         x = self.final_res_block(x, t)
         return self.final_conv(x)
 
-def extract(a, t, x_shape):
-    b, *_ = t.shape
-    out = a.gather(-1, t)
-    return out.reshape(b, *(1,) * (len(x_shape) - 1))
 
 def linear_beta_schedule(timesteps):
     scale = 1000 / timesteps

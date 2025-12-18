@@ -20,7 +20,6 @@ from red_diffeq import (
     Unet,
     FWIForward,
     InversionEngine,
-    DataTransformer,
     SSIM,
     prepare_initial_model,
     s_normalize_none,
@@ -111,38 +110,33 @@ def get_data_files(config: ml_collections.ConfigDict) -> list:
         raise ValueError(f"No data files found matching {pattern} in {seismic_dir}")
 
     all_families = [f.name for f in family_files]
-    
-    # Filter by openfwi_families if specified
+
+    # Early return if no filter specified
     openfwi_families = getattr(config.data, 'openfwi_families', None)
-    if openfwi_families is not None:
-        # Handle empty list (process all)
-        if isinstance(openfwi_families, list) and len(openfwi_families) == 0:
-            return all_families
-        
-        # Convert to list if single value
-        if isinstance(openfwi_families, str):
-            openfwi_families = [openfwi_families]
-        
-        # Add .npy extension if not present
-        filtered_families = []
-        for family in openfwi_families:
-            if family is None:
-                continue
-            if not family.endswith('.npy'):
-                family = f"{family}.npy"
-            filtered_families.append(family)
-        
-        if not filtered_families:
-            # If all were None or empty, process all
-            return all_families
-        
-        # Filter to only include specified families
-        all_families = [f for f in all_families if f in filtered_families]
-        
-        if not all_families:
-            raise ValueError(f"None of the specified families {openfwi_families} were found. Available families: {[f.name for f in family_files]}")
-    
-    return all_families
+    if openfwi_families is None or openfwi_families == []:
+        return all_families
+
+    # Normalize to list
+    if isinstance(openfwi_families, str):
+        openfwi_families = [openfwi_families]
+
+    # Filter and ensure .npy extension (skip None values)
+    filtered = [f if f.endswith('.npy') else f"{f}.npy"
+                for f in openfwi_families if f is not None]
+
+    if not filtered:
+        return all_families
+
+    # Keep only matching families
+    result = [f for f in all_families if f in filtered]
+
+    if not result:
+        raise ValueError(
+            f"No matching families found. Requested: {filtered}, "
+            f"Available: {all_families}"
+        )
+
+    return result
 
 
 def process_batch(
@@ -168,9 +162,7 @@ def process_batch(
             config.optimization.initial_type,
             sigma=config.optimization.sigma,
         )
-        # CRITICAL: Pad to 72×72 to match original implementation
-        # Original code: F.pad(initial_model, (1, 1, 1, 1), "constant", 0)
-        # This ensures mu is optimized in 72×72 space that diffusion model expects
+        # Always pad: 70×70 → 72×72, or 70×190 → 72×192
         initial_model = torch.nn.functional.pad(initial_model, (1, 1, 1, 1), "constant", 0)
         initial_models.append(initial_model)
 
@@ -205,10 +197,10 @@ def save_batch_results(
     vel_batch: torch.Tensor,
     output_dir: Path,
 ) -> None:
-    # mu_batch is already cropped to 70×70 (returned from optimize())
+    # mu_batch is already cropped (returned from optimize())
     mu_batch_np = mu_batch.detach().cpu().numpy()
     vel_batch_np = vel_batch.cpu().numpy()
-    # initial_model_batch is 72×72, crop to 70×70 for saving (matching original)
+    # initial_model_batch is always padded (72×72 or 72×192), crop to original size
     initial_model_batch_np = initial_model_batch[:, :, 1:-1, 1:-1].detach().cpu().numpy()
 
     for i, model_idx in enumerate(range(batch_start, batch_end)):
@@ -252,15 +244,12 @@ def run_experiment(config: ml_collections.ConfigDict) -> None:
     diffusion = load_diffusion_model(config, device)
     fwi_forward = initialize_forward_operator(config, device)
 
-    data_transformer = DataTransformer()
     ssim_loss = SSIM(window_size=11, size_average=True)
     inversion_engine = InversionEngine(
         diffusion,
-        data_transformer,
         ssim_loss,
         config.optimization.regularization if config.optimization.regularization else None,
         use_time_weight=getattr(config.optimization, 'use_time_weight', False),
-        share_noise_across_batch=getattr(config.optimization, 'share_noise_across_batch', False),
         sigma_x0=getattr(config.optimization, 'sigma_x0', 0.0001),
     )
 

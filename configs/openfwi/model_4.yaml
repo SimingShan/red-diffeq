@@ -31,7 +31,6 @@ optimization:
   regularization: diffusion
   reg_lambda: 0.75
   use_time_weight: false
-  share_noise_across_batch: false
   sigma: 10.0
   sigma_x0: 0.0001
   initial_type: smoothed

@@ -7,16 +7,13 @@ from red_diffeq.regularization.benchmark import total_variation_loss, tikhonov_l
 class RegularizationMethod:
 
     def __init__(self, regularization_type: Optional[str], diffusion_model=None,
-                 use_time_weight: bool = False, share_noise_across_batch: bool = False,
-                 sigma_x0: float = 0.0001):
+                 use_time_weight: bool = False, sigma_x0: float = 0.0001):
         self.regularization_type = regularization_type
         self.diffusion_model = diffusion_model
         self.use_time_weight = use_time_weight
-        self.share_noise_across_batch = share_noise_across_batch
         self.sigma_x0 = sigma_x0
         if regularization_type == 'diffusion':
             self.red_diffeq = RED_DiffEq(diffusion_model, use_time_weight=use_time_weight,
-                                          share_noise_across_batch=share_noise_across_batch,
                                           sigma_x0=sigma_x0)
 
     def get_reg_loss(self, mu: torch.Tensor, seed: Optional[int] = None) -> torch.Tensor:

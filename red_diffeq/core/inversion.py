@@ -3,7 +3,7 @@ from tqdm.auto import tqdm
 from typing import Optional
 
 from red_diffeq.regularization.base import RegularizationMethod
-from red_diffeq.utils.data_trans import DataTransformer
+from red_diffeq.utils.data_trans import add_noise_to_seismic, missing_trace
 from red_diffeq.utils.ssim import SSIM
 from red_diffeq.core.metrics import MetricsCalculator
 from red_diffeq.core.losses import LossCalculator
@@ -11,18 +11,15 @@ from red_diffeq.core.losses import LossCalculator
 
 class InversionEngine:
 
-    def __init__(self, diffusion_model, data_transformer: DataTransformer,
-                 ssim_loss: SSIM, regularization: Optional[str] = None,
-                 use_time_weight: bool = False, share_noise_across_batch: bool = False,
-                 sigma_x0: float = 0.0001):
+    def __init__(self, diffusion_model, ssim_loss: SSIM, regularization: Optional[str] = None,
+                 use_time_weight: bool = False, sigma_x0: float = 0.0001):
         self.diffusion_model = diffusion_model
-        self.data_transformer = data_transformer
         self.ssim_loss = ssim_loss
         self.device = diffusion_model.device
         self.sigma_x0 = sigma_x0  # Store for use in forward modeling
         self.regularization_method = RegularizationMethod(
             regularization, diffusion_model, use_time_weight=use_time_weight,
-            share_noise_across_batch=share_noise_across_batch, sigma_x0=sigma_x0
+            sigma_x0=sigma_x0
         )
 
     def optimize(self, mu: torch.Tensor, mu_true: torch.Tensor, y: torch.Tensor,
@@ -39,18 +36,11 @@ class InversionEngine:
 
         fwi_forward = fwi_forward.to(self.device)
         if regularization is not None:
-            use_time_weight = getattr(
-                self.regularization_method, 'use_time_weight', False
-            ) if hasattr(self, 'regularization_method') else False
-            share_noise_across_batch = getattr(
-                self.regularization_method, 'share_noise_across_batch', False
-            ) if hasattr(self, 'regularization_method') else False
-            sigma_x0 = getattr(
-                self.regularization_method, 'sigma_x0', 0.0001
-            ) if hasattr(self, 'regularization_method') else 0.0001
+            use_time_weight = self.regularization_method.use_time_weight
+            sigma_x0 = self.regularization_method.sigma_x0
             self.regularization_method = RegularizationMethod(
                 regularization, self.diffusion_model, use_time_weight=use_time_weight,
-                share_noise_across_batch=share_noise_across_batch, sigma_x0=sigma_x0
+                sigma_x0=sigma_x0
             )
 
         batch_size = mu.shape[0]
@@ -62,7 +52,7 @@ class InversionEngine:
             optimizer, T_max=ts, eta_min=0.0
         )
 
-        metrics_calc = MetricsCalculator(self.data_transformer, self.ssim_loss)
+        metrics_calc = MetricsCalculator(self.ssim_loss)
         loss_calc = LossCalculator(self.regularization_method)
 
         metrics_history = {
@@ -70,8 +60,8 @@ class InversionEngine:
             'ssim': [], 'mae': [], 'rmse': []
         }
 
-        y = self.data_transformer.add_noise_to_seismic(y, noise_std, noise_type=noise_type)
-        y = self.data_transformer.missing_trace(y, missing_number)
+        y = add_noise_to_seismic(y, noise_std, noise_type=noise_type)
+        y = missing_trace(y, missing_number)
         y = y.to(self.device)
 
         pbar = tqdm(range(ts), desc='Optimizing', unit='step')
@@ -109,10 +99,8 @@ class InversionEngine:
                 # For non-diffusion regularization (TV, L2, or None), use mu directly
                 x0_pred = mu
 
-            # Use x0_pred for forward modeling (matching old implementation)
-            # CRITICAL: Crop to 70×70 before forward modeling (original: x0_pred[:, :, 1:-1, 1:-1])
-            # mu is 72×72, crop inner region for FWI
-            # Both forward modeling and regularization use the SAME x0_pred
+            # Use x0_pred for forward modeling
+            # mu is always padded (72×72 or 72×192), crop to original size for FWI
             predicted_seismic = fwi_forward(x0_pred[:, :, 1:-1, 1:-1])
             loss_obs = loss_calc.observation_loss(predicted_seismic, y)
 
@@ -131,7 +119,7 @@ class InversionEngine:
 
             scheduler.step()
 
-            # Metrics calculated on cropped 70×70 region (matching original)
+            # Metrics calculated on original dimensions (crop padding)
             mae, rmse, ssim = metrics_calc.calculate(mu[:, :, 1:-1, 1:-1], mu_true)
 
             metrics_history['total_losses'].append(total_loss.detach().cpu().numpy())
@@ -160,6 +148,6 @@ class InversionEngine:
             }
             final_results_per_model.append(model_results)
 
-        # Return cropped 70×70 mu (matching original: mu[:, :, 1:-1, 1:-1])
-        mu_cropped = mu[:, :, 1:-1, 1:-1]
-        return mu_cropped, final_results_per_model
+        # Return mu in original dimensions (crop padding: 72×72→70×70 or 72×192→70×190)
+        mu_result = mu[:, :, 1:-1, 1:-1]
+        return mu_result, final_results_per_model

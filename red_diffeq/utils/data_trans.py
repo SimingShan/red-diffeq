@@ -137,10 +137,6 @@ def missing_trace(y: torch.Tensor, num_missing: int) -> torch.Tensor:
 
     return y_missing
 
-class DataTransformer:
-    """Data transformation utilities for velocity and seismic data."""
-
-    @staticmethod
     def v_normalize(v):
         return v_normalize(v)
 

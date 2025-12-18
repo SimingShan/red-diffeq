@@ -35,8 +35,8 @@ def get_config():
     config.optimization.regularization = 'diffusion'
     config.optimization.reg_lambda = 0.75
     config.optimization.use_time_weight = False
-    config.optimization.share_noise_across_batch = False
     config.optimization.sigma = 10.0
+    config.optimization.sigma_x0 = 0.0001
     config.optimization.initial_type = 'smoothed'
     config.optimization.noise_std = 0.0
     config.optimization.noise_type = 'gaussian'
