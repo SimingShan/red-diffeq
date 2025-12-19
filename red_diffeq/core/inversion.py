@@ -61,8 +61,10 @@ class InversionEngine:
         }
 
         y = add_noise_to_seismic(y, noise_std, noise_type=noise_type)
-        y = missing_trace(y, missing_number)
+        # Get both masked data and mask for proper loss computation
+        y, mask = missing_trace(y, missing_number, return_mask=True)
         y = y.to(self.device)
+        mask = mask.to(self.device)
 
         pbar = tqdm(range(ts), desc='Optimizing', unit='step')
         for step in pbar:
@@ -102,7 +104,8 @@ class InversionEngine:
             # Use x0_pred for forward modeling
             # mu is always padded (72×72 or 72×192), crop to original size for FWI
             predicted_seismic = fwi_forward(x0_pred[:, :, 1:-1, 1:-1])
-            loss_obs = loss_calc.observation_loss(predicted_seismic, y)
+            # Pass mask to properly handle missing traces
+            loss_obs = loss_calc.observation_loss(predicted_seismic, y, mask=mask)
 
             # CRITICAL FIX: Pass x0_pred (not mu) to ensure consistent perturbation
             # between forward modeling and regularization

@@ -110,23 +110,32 @@ def prepare_initial_model(v_true: torch.Tensor, initial_type: str = None, sigma:
     return v_blurred
 
 
-def missing_trace(y: torch.Tensor, num_missing: int) -> torch.Tensor:
-    """Zero out random traces in seismic data - FULLY ON GPU.
+def missing_trace(y: torch.Tensor, num_missing: int, return_mask: bool = True):
+    """Zero out random traces in seismic data and return mask - FULLY ON GPU.
 
     Args:
         y: Seismic data tensor of shape (batch, sources, time, traces)
         num_missing: Number of traces to zero out
+        return_mask: If True, return (y_missing, mask). If False, return only y_missing (backward compatible)
 
     Returns:
-        Modified seismic data (on same device as input)
+        If return_mask=True: (y_missing, mask) where mask is 1 for observed traces, 0 for missing
+        If return_mask=False: y_missing only (backward compatible)
     """
     assert num_missing >= 0, 'The number of missing traces must be greater than 0'
 
-    if num_missing == 0:
-        return y
-
     device = y.device
     batch_size, num_sources, time_samples, num_traces = y.shape
+
+    # Create mask: 1 for observed, 0 for missing
+    mask = torch.ones_like(y, device=device)
+
+    if num_missing == 0:
+        if return_mask:
+            return y, mask
+        else:
+            return y
+
     y_missing = y.clone()
 
     for b in range(batch_size):
@@ -134,8 +143,12 @@ def missing_trace(y: torch.Tensor, num_missing: int) -> torch.Tensor:
             # Generate random indices on CPU (fast), then use on GPU
             missing_indices = torch.randperm(num_traces, device=device)[:num_missing]
             y_missing[b, s, :, missing_indices] = 0
+            mask[b, s, :, missing_indices] = 0
 
-    return y_missing
+    if return_mask:
+        return y_missing, mask
+    else:
+        return y_missing
 
     def v_normalize(v):
         return v_normalize(v)

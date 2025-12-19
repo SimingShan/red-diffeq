@@ -11,19 +11,33 @@ class LossCalculator:
     def __init__(self, regularization_method: RegularizationMethod):
         self.regularization_method = regularization_method
 
-    def observation_loss(self, predicted: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    def observation_loss(self, predicted: torch.Tensor, target: torch.Tensor,
+                        mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """Compute observation loss (data fidelity term).
 
         Args:
             predicted: Predicted seismic data
             target: Observed seismic data
+            mask: Optional mask tensor (1 for observed data, 0 for missing).
+                  If provided, loss is only computed on observed (non-missing) data.
 
         Returns:
             Per-model observation loss (batch_size,)
         """
         loss = nn.L1Loss(reduction='none')(target.float(), predicted.float())
-        # Average over spatial/temporal dimensions, keep batch dimension
-        loss = loss.mean(dim=tuple(range(1, len(loss.shape))))
+
+        if mask is not None:
+            # Only compute loss where mask == 1 (observed data)
+            # Multiply loss by mask to zero out missing data contributions
+            loss = loss * mask
+            # Compute mean only over observed data (normalize by number of observed elements)
+            # Sum over all dimensions except batch, then divide by number of observed elements per sample
+            num_observed = mask.sum(dim=tuple(range(1, len(mask.shape)))).clamp(min=1.0)  # Avoid division by zero
+            loss = loss.sum(dim=tuple(range(1, len(loss.shape)))) / num_observed
+        else:
+            # Original behavior: average over all spatial/temporal dimensions
+            loss = loss.mean(dim=tuple(range(1, len(loss.shape))))
+
         return loss
 
     def regularization_loss(self, mu: torch.Tensor, seed: Optional[int] = None) -> torch.Tensor:

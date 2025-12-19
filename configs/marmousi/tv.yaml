@@ -53,4 +53,3 @@ experiment:
   log_interval: 10
   save_metrics: true
   random_seed: 8888
-

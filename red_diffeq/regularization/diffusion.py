@@ -82,7 +82,7 @@ class RED_DiffEq:
         )
 
         pred_noise = predictions.pred_noise
-        gradient_field = (pred_noise - noise).detach()
+        gradient_field = pred_noise - noise
         reg_field = gradient_field * x0_pred
 
         reg_field = self._apply_time_weight(reg_field, time_tensor)
