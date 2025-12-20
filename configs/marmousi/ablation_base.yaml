@@ -1,0 +1,70 @@
+# Marmousi - Ablation Study Base Configuration
+# This config is used for gradient tricks ablation study on Marmousi, first sample
+# Model: model-4.pt, LR: 0.01
+# Marmousi size: 70x190 (requires patch-based processing)
+# Do not run directly - use the ablation study script
+
+pde:
+  n_grid: 190  # Horizontal grid size (width) - matches Marmousi width
+  nt: 1000
+  dx: 10.0
+  dt: 0.001
+  nbc: 120
+  f: 15.0
+  sz: 10
+  gz: 10
+  ng: 190  # Number of receivers - matches number of seismic traces
+  ns: 5
+
+model:
+  dim: 64
+  dim_mults: [1, 2, 4, 8]
+  flash_attn: false
+  channels: 1
+
+diffusion:
+  image_size: 72  # Diffusion model trained on 70x70 patches (72x72 with padding)
+  timesteps: 1000
+  sampling_timesteps: 250
+  objective: pred_noise
+  model_path: pretrained_models/model-4.pt
+
+optimization:
+  # Basic FWI parameters
+  lr: 0.01
+  ts: 300  # Number of FWI iterations per diffusion step (WILL BE OVERRIDDEN)
+  diffusion_ts: 500  # Number of diffusion timesteps (WILL BE OVERRIDDEN)
+
+  # Initial model settings
+  sigma: 20.0  # Higher sigma for Marmousi (more complex structures)
+  initial_type: smoothed
+
+  # Data augmentation
+  noise_std: 0.0
+  noise_type: gaussian
+  missing_number: 0
+
+  # Gradient processing tricks - THESE WILL BE OVERRIDDEN BY ABLATION SCRIPT
+  grad_norm: true
+  grad_smooth: null
+  model_blur: false
+  grad_clip: 1.0
+
+  # Patch-based processing (REQUIRED for 70x190 Marmousi)
+  use_patches: true
+  patch_kernel_size: [70, 70]  # Patch size (height, width)
+  patch_stride: [1, 60]  # Stride (height, width) - overlapping patches
+
+data:
+  seismic_data_dir: dataset/Marmousi_Ablation/Seismic_Data/
+  velocity_data_dir: dataset/Marmousi_Ablation/Velocity_Data/
+  batch_size: 1  # Process one sample at a time
+  data_pattern: "Marmousi_sample0.npy"  # Only process first sample
+
+experiment:
+  name: marmousi_ablation_base
+  results_dir: ablation_results/
+  save_intermediate: false
+  log_interval: 10
+  save_metrics: true
+  random_seed: 8888

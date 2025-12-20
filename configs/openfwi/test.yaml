@@ -1,9 +1,7 @@
-# Marmousi Patch-Based Regularization Test Configuration
-# This config tests the patch-based regularization on Marmousi dataset
-# Marmousi velocity model: 70x190 (width=190 > patch_size=72, will trigger patching)
+# OpenFWI - RED-DiffEq (Diffusion regularization) using pretrained model-3
 
 pde:
-  n_grid: 190  # Horizontal grid size (width) - matches Marmousi width
+  n_grid: 70
   nt: 1000
   dx: 10.0
   dt: 0.001
@@ -11,7 +9,7 @@ pde:
   f: 15.0
   sz: 10
   gz: 10
-  ng: 190  # Number of receivers - matches number of seismic traces
+  ng: 70
   ns: 5
 
 model:
@@ -25,7 +23,7 @@ diffusion:
   timesteps: 1000
   sampling_timesteps: 250
   objective: pred_noise
-  model_path: pretrained_models/model-4.pt
+  model_path: diffusion_models_sigmoid_20251219_115811/model-1.pt
 
 optimization:
   lr: 0.03
@@ -33,25 +31,28 @@ optimization:
   regularization: diffusion
   reg_lambda: 0.75
   use_time_weight: false
-  sigma: 20.0
+  sigma: 10.0
+  sigma_x0: 0.0001
   initial_type: smoothed
   noise_std: 0.0
   noise_type: gaussian
   missing_number: 0
-  sigma_x0: 0.0001
 
 data:
-  seismic_data_dir: dataset/Marmousi/Seismic_Data/
-  velocity_data_dir: dataset/Marmousi/Velocity_Data/
+  seismic_data_dir: dataset/OpenFWI/Seismic_Data/
+  velocity_data_dir: dataset/OpenFWI/Velocity_Data/
   batch_size: 1
   data_pattern: "*.npy"
   use_mmap: true
+  openfwi_families: null  # List of families to process (e.g., [CF, CV] or [CF.npy, CV.npy]), null/None to process all
+  sample_index: null  # Process only a specific sample index (0-indexed), null/None to process all samples
 
 experiment:
-  name: marmousi_red_diffeq
+  name: openfwi_model_3
   results_dir: experiment/
   save_intermediate: false
   log_interval: 10
   save_metrics: true
   random_seed: 8888
+
 

@@ -43,7 +43,15 @@ MANIFEST
 # PyInstaller
 *.manifest
 *.spec
-
+/diffusion_models_sigmoid_20251219_115811
+/diffusion_bench
+run_ablation_study_full.sh
+run_ablation_marmousi.sh
+run_ablation_study_full.py
+run_ablation_marmousi.py
+prepare_cf_first_sample.py
+prepare_marmousi_first_sample.py
+run_diffusion_bench.sh
 # Unit test / coverage reports
 htmlcov/
 .tox/

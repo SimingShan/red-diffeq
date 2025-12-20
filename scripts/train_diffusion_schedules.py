@@ -176,12 +176,12 @@ def train_model_with_schedule(schedule_name, training_images, train_num_steps=60
 def main():
     """Main training function."""
     print("\n" + "="*70)
-    print("DIFFUSION MODEL TRAINING - BETA SCHEDULE COMPARISON")
+    print("DIFFUSION MODEL TRAINING - SIGMOID SCHEDULE")
     print("="*70)
     print(f"Start time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("\nConfiguration:")
-    print("  - Schedules: linear, cosine, sigmoid")
-    print("  - Iterations per schedule: 600,000")
+    print("  - Schedule: sigmoid (best performing)")
+    print("  - Iterations: 600,000")
     print("  - Batch size: 32")
     print("  - Learning rate: 0.0002")
     print("  - FID calculation: Enabled")
@@ -191,48 +191,47 @@ def main():
     # Load training data once
     training_images = load_training_data()
 
-    # Train models with different schedules
-    schedules = ['linear', 'cosine', 'sigmoid']
+    # Train sigmoid schedule only
+    schedule = 'sigmoid'
     results = {}
 
-    for schedule in schedules:
-        try:
-            results_folder = train_model_with_schedule(
-                schedule,
-                training_images,
-                train_num_steps=600000
-            )
-            results[schedule] = {
-                'status': 'success',
-                'results_folder': results_folder
-            }
-        except Exception as e:
-            print(f"\n✗ ERROR training {schedule} schedule: {e}")
-            results[schedule] = {
-                'status': 'failed',
-                'error': str(e)
-            }
+    try:
+        results_folder = train_model_with_schedule(
+            schedule,
+            training_images,
+            train_num_steps=600000
+        )
+        results[schedule] = {
+            'status': 'success',
+            'results_folder': results_folder
+        }
+    except Exception as e:
+        print(f"\n✗ ERROR training {schedule} schedule: {e}")
+        results[schedule] = {
+            'status': 'failed',
+            'error': str(e)
+        }
 
     # Save summary
     summary_path = Path('training_summary.json')
     with open(summary_path, 'w') as f:
         json.dump({
             'start_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'schedules': schedules,
-            'iterations_per_schedule': 600000,
+            'schedule': schedule,
+            'iterations': 600000,
             'results': results
         }, f, indent=2)
 
     # Print final summary
     print("\n" + "="*70)
-    print("ALL TRAINING COMPLETE")
+    print("TRAINING COMPLETE")
     print("="*70)
     print("\nSummary:")
-    for schedule, result in results.items():
+    for sched, result in results.items():
         if result['status'] == 'success':
-            print(f"  ✓ {schedule:10s}: {result['results_folder']}")
+            print(f"  ✓ {sched:10s}: {result['results_folder']}")
         else:
-            print(f"  ✗ {schedule:10s}: FAILED - {result.get('error', 'Unknown error')}")
+            print(f"  ✗ {sched:10s}: FAILED - {result.get('error', 'Unknown error')}")
 
     print(f"\nFull summary saved to: {summary_path}")
     print("="*70)

@@ -25,7 +25,7 @@ diffusion:
   timesteps: 1000
   sampling_timesteps: 250
   objective: pred_noise
-  model_path: pretrained_models/model-4.pt
+  model_path: diffusion_models_sigmoid_20251219_115811/model-1.pt
 
 optimization:
   lr: 0.03

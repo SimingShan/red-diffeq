@@ -1,0 +1,74 @@
+# OpenFWI - ILVR-FWI Benchmark Configuration
+# Diffusion-based FWI with ILVR (Iterative Latent Variable Refinement) conditioning
+# Usage: python diffusion_bench/run_bench.py --method ilvr --config configs/openfwi/diffusion_bench_ilvr.yaml
+
+pde:
+  n_grid: 70
+  nt: 1000
+  dx: 10.0
+  dt: 0.001
+  nbc: 120
+  f: 15.0
+  sz: 10
+  gz: 10
+  ng: 70
+  ns: 5
+
+model:
+  dim: 64
+  dim_mults: [1, 2, 4, 8]
+  flash_attn: false
+  channels: 1
+
+diffusion:
+  image_size: 72
+  timesteps: 1000
+  sampling_timesteps: 250
+  objective: pred_noise
+  model_path: pretrained_models/model-4.pt
+
+optimization:
+  # Basic FWI parameters
+  lr: 0.01
+  ts: 300  # Number of FWI iterations per diffusion step
+  diffusion_ts: 500  # Number of diffusion timesteps (reverse from 499 to 0)
+
+  # Initial model settings
+  sigma: 10.0
+  initial_type: smoothed
+
+  # Data augmentation
+  noise_std: 0.0
+  noise_type: gaussian
+  missing_number: 0
+
+  # Gradient processing tricks
+  grad_norm: true  # Normalize gradients by initial maximum
+  grad_smooth: null  # Gaussian smoothing sigma (e.g., 1.0), null to disable
+  model_blur: false  # Apply Gaussian blur to model after each update
+  grad_clip: 1.0  # Gradient clipping factor
+
+  # ILVR-specific parameters
+  use_ilvr: true  # Enable ILVR conditioning
+  ilvr_weight: 0.05  # ILVR weighting factor (0.01-0.5, higher = stronger conditioning)
+  ilvr_down_schedule: linear  # Downsampling schedule: 'linear' (16→2) or 'stepwise' ([32,16,8,4])
+
+  # Patch-based processing (not needed for 70x70 OpenFWI)
+  use_patches: false
+  patch_kernel_size: null
+  patch_stride: null
+
+data:
+  seismic_data_dir: dataset/OpenFWI/Seismic_Data/
+  velocity_data_dir: dataset/OpenFWI/Velocity_Data/
+  batch_size: 1  # Process one sample at a time for diffusion_bench
+  data_pattern: "*.npy"
+  use_mmap: true
+
+experiment:
+  name: openfwi_ilvr_fwi
+  results_dir: diffusion_bench_results/
+  save_intermediate: false
+  log_interval: 10
+  save_metrics: true
+  random_seed: 8888
