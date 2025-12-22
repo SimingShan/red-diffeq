@@ -26,8 +26,7 @@ class InversionEngine:
     def optimize(self, mu: torch.Tensor, mu_true: torch.Tensor, y: torch.Tensor,
                 fwi_forward, ts: int = 300, lr: float = 0.03, reg_lambda: float = 0.01,
                 noise_std: float = 0.0, noise_type: str = 'gaussian',
-                missing_number: int = 0, regularization: Optional[str] = None,
-                random_seed: Optional[int] = None):
+                missing_number: int = 0, regularization: Optional[str] = None):
         if mu.shape[0] != y.shape[0]:
             raise ValueError('Batch size mismatch between velocity and seismic data')
         if regularization not in ['diffusion', 'l2', 'tv', 'hybrid', None]:
@@ -62,16 +61,12 @@ class InversionEngine:
             'ssim': [], 'mae': [], 'rmse': []
         }
 
-        # Create generator for reproducibility - one generator for all random operations
-        if random_seed is not None:
-            generator = torch.Generator(device=self.device)
-            generator.manual_seed(random_seed)
-        else:
-            generator = None
-
-        y = add_noise_to_seismic(y, noise_std, noise_type=noise_type, generator=generator)
+        # All random operations use the global RNG state (no generators passed)
+        # This ensures: (1) within-run randomness (each call advances RNG state)
+        #              (2) cross-run reproducibility (same seed = same sequence)
+        y = add_noise_to_seismic(y, noise_std, noise_type=noise_type)
         # Get both masked data and mask for proper loss computation
-        y, mask = missing_trace(y, missing_number, return_mask=True, generator=generator)
+        y, mask = missing_trace(y, missing_number, return_mask=True)
         y = y.to(self.device)
         mask = mask.to(self.device)
 
@@ -80,8 +75,8 @@ class InversionEngine:
             # Create x0_pred with small perturbation ONLY for diffusion regularization
             # This matches the original implementation exactly
             if regularization == 'diffusion':
-                # Generator automatically produces different values at each call
-                noise_x0 = torch.randn(mu.shape, generator=generator, device=mu.device, dtype=mu.dtype)
+                # Uses global RNG state - each step gets different noise
+                noise_x0 = torch.randn(mu.shape, device=mu.device, dtype=mu.dtype)
                 x0_pred = mu + self.regularization_method.sigma_x0 * noise_x0
             else:
                 # For non-diffusion regularization (TV, L2, or None), use mu directly
@@ -95,8 +90,8 @@ class InversionEngine:
 
             # CRITICAL FIX: Pass x0_pred (not mu) to ensure consistent perturbation
             # between forward modeling and regularization
-            # Generator automatically produces different random values at each step
-            reg_loss = loss_calc.regularization_loss(x0_pred, generator=generator)
+            # Uses global RNG state - each step gets different diffusion timestep and noise
+            reg_loss = loss_calc.regularization_loss(x0_pred)
 
             total_loss = loss_calc.total_loss(loss_obs, reg_loss, reg_lambda)
 

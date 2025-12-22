@@ -182,7 +182,6 @@ def process_batch(
         regularization=config.optimization.regularization
         if config.optimization.regularization and config.optimization.regularization != "none"
         else None,
-        random_seed=config.experiment.random_seed,
     )
 
     return mu_batch, final_results_per_model, initial_model_batch, vel_batch
@@ -226,6 +225,16 @@ def save_batch_results(
 
 
 def run_experiment(config: ml_collections.ConfigDict) -> None:
+    # CRITICAL: Set random seed FIRST, before any operations that might use randomness
+    # This ensures reproducibility: same seed = identical results across runs
+    # Within a run: each random operation advances the global RNG state, so values are random
+    base_seed = config.experiment.random_seed
+    if base_seed is not None:
+        from red_diffeq.utils.seed_utils import set_seed
+        set_seed(base_seed, verbose=True)
+    else:
+        print("No random seed set - experiment will be non-deterministic")
+
     print("\n" + "=" * 70)
     print("Configuration:")
     print("=" * 70)
@@ -235,10 +244,6 @@ def run_experiment(config: ml_collections.ConfigDict) -> None:
     print("=" * 70 + "\n")
 
     device = setup_device()
-
-    if config.experiment.random_seed is not None:
-        from red_diffeq.utils.seed_utils import set_seed
-        set_seed(config.experiment.random_seed, verbose=True)
 
     print("Initializing models...")
     diffusion = load_diffusion_model(config, device)
