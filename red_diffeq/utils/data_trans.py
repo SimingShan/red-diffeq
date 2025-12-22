@@ -30,13 +30,15 @@ def s_denormalize(s_norm):
     return (s_norm + 1) / 2 * 80 - 20
 
 
-def add_noise_to_seismic(y: torch.Tensor, std: float, noise_type: str = 'gaussian') -> torch.Tensor:
+def add_noise_to_seismic(y: torch.Tensor, std: float, noise_type: str = 'gaussian',
+                         generator: Optional[torch.Generator] = None) -> torch.Tensor:
     """Add noise to seismic data - FULLY ON GPU.
 
     Args:
         y: Seismic data tensor (on GPU)
         std: Standard deviation (Gaussian) or scale (Laplace)
         noise_type: 'gaussian' or 'laplace'
+        generator: Optional torch.Generator for reproducibility
 
     Returns:
         Noisy seismic data (on GPU)
@@ -50,11 +52,11 @@ def add_noise_to_seismic(y: torch.Tensor, std: float, noise_type: str = 'gaussia
     device = y.device
 
     if noise_type == 'gaussian':
-        noise = torch.randn_like(y, device=device) * std
+        noise = torch.randn(y.shape, generator=generator, device=device, dtype=y.dtype) * std
     elif noise_type == 'laplace':
         # Laplace distribution using inverse transform sampling
         # X = -b * sign(U) * log(1 - 2|U|) where U ~ Uniform(-0.5, 0.5)
-        u = torch.rand_like(y, device=device) - 0.5
+        u = torch.rand(y.shape, generator=generator, device=device, dtype=y.dtype) - 0.5
         noise = -std * torch.sign(u) * torch.log(1 - 2 * torch.abs(u))
 
     return y + noise
@@ -110,7 +112,8 @@ def prepare_initial_model(v_true: torch.Tensor, initial_type: str = None, sigma:
     return v_blurred
 
 
-def missing_trace(y: torch.Tensor, num_missing: int, return_mask: bool = True, seed: Optional[int] = None):
+def missing_trace(y: torch.Tensor, num_missing: int, return_mask: bool = True,
+                  generator: Optional[torch.Generator] = None):
     """Zero out random traces in seismic data and return mask - FULLY ON GPU.
 
     IMPORTANT: Missing receivers are the SAME across all sources (shots).
@@ -121,7 +124,7 @@ def missing_trace(y: torch.Tensor, num_missing: int, return_mask: bool = True, s
         y: Seismic data tensor of shape (batch, sources, time, traces)
         num_missing: Number of traces to zero out
         return_mask: If True, return (y_missing, mask). If False, return only y_missing (backward compatible)
-        seed: Optional random seed for reproducibility. If None, uses current RNG state.
+        generator: Optional torch.Generator for reproducibility
 
     Returns:
         If return_mask=True: (y_missing, mask) where mask is 1 for observed traces, 0 for missing
@@ -143,42 +146,18 @@ def missing_trace(y: torch.Tensor, num_missing: int, return_mask: bool = True, s
 
     y_missing = y.clone()
 
-    # Optional: set seed for this operation
-    if seed is not None:
-        rng_state = torch.get_rng_state()  # Save current state
-        torch.manual_seed(seed)
-
     for b in range(batch_size):
         # CRITICAL FIX: Select missing receivers ONCE per batch
         # These same receivers are missing for ALL sources (shots)
         # This matches real seismic acquisition where a broken receiver
         # is missing for all shots, not different receivers per shot
-        missing_indices = torch.randperm(num_traces, device=device)[:num_missing]
+        missing_indices = torch.randperm(num_traces, generator=generator, device=device)[:num_missing]
 
         # Apply to ALL sources simultaneously (vectorized operation)
         y_missing[b, :, :, missing_indices] = 0  # All sources at once
         mask[b, :, :, missing_indices] = 0        # All sources at once
 
-    # Restore RNG state if we set a temporary seed
-    if seed is not None:
-        torch.set_rng_state(rng_state)
-
     if return_mask:
         return y_missing, mask
     else:
         return y_missing
-
-    def v_normalize(v):
-        return v_normalize(v)
-
-    @staticmethod
-    def v_denormalize(v_norm):
-        return v_denormalize(v_norm)
-
-    @staticmethod
-    def add_noise_to_seismic(y, std, noise_type='gaussian'):
-        return add_noise_to_seismic(y, std, noise_type)
-
-    @staticmethod
-    def missing_trace(y, num_missing):
-        return missing_trace(y, num_missing)

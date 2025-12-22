@@ -251,6 +251,7 @@ def run_experiment(config: ml_collections.ConfigDict) -> None:
         config.optimization.regularization if config.optimization.regularization else None,
         use_time_weight=getattr(config.optimization, 'use_time_weight', False),
         sigma_x0=getattr(config.optimization, 'sigma_x0', 0.0001),
+        fixed_timestep=getattr(config.optimization, 'fixed_timestep', None),
     )
 
     seismic_dir = Path(config.data.seismic_data_dir).resolve()
@@ -370,6 +371,11 @@ def main() -> None:
     parser.add_argument("--missing_number", type=int, help="Number of missing traces")
     parser.add_argument("--batch_size", type=int, help="Batch size")
     parser.add_argument("--experiment_name", type=str, help="Experiment name")
+    parser.add_argument(
+        "--results_dir",
+        type=Path,
+        help="Base directory where results will be written (overrides config.experiment.results_dir)",
+    )
     parser.add_argument("--random_seed", type=int, help="Random seed")
     parser.add_argument("--openfwi_families", type=str, nargs="+", help="OpenFWI families to process (e.g., CF CV or CF.npy CV.npy). Default: process all families")
     parser.add_argument("--sample_index", type=int, default=None, help="Process only a specific sample index (0-indexed). Default: process all samples")
@@ -392,6 +398,8 @@ def main() -> None:
         config.optimization.regularization = args.regularization
     if args.reg_lambda is not None:
         config.optimization.reg_lambda = args.reg_lambda
+    if args.results_dir is not None:
+        config.experiment.results_dir = str(args.results_dir)
     if args.noise_type is not None:
         config.optimization.noise_type = args.noise_type
     if args.noise_std is not None:

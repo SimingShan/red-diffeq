@@ -37,11 +37,11 @@ optimization:
   noise_std: 0.0
   noise_type: gaussian
   missing_number: 0
-
+  fixed_timestep: null
 data:
   seismic_data_dir: dataset/OpenFWI/Seismic_Data/
   velocity_data_dir: dataset/OpenFWI/Velocity_Data/
-  batch_size: 34
+  batch_size: 25
   data_pattern: "*.npy"
   use_mmap: true
   openfwi_families: null  # List of families to process (e.g., [CF, CV] or [CF.npy, CV.npy]), null/None to process all

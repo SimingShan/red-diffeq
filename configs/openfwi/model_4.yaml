@@ -1,5 +1,3 @@
-# OpenFWI - RED-DiffEq (Diffusion regularization) using pretrained model-4
-
 pde:
   n_grid: 70
   nt: 1000
@@ -11,42 +9,42 @@ pde:
   gz: 10
   ng: 70
   ns: 5
-
 model:
   dim: 64
-  dim_mults: [1, 2, 4, 8]
+  dim_mults:
+  - 1
+  - 2
+  - 4
+  - 8
   flash_attn: false
   channels: 1
-
 diffusion:
   image_size: 72
   timesteps: 1000
   sampling_timesteps: 250
   objective: pred_noise
   model_path: pretrained_models/model-4.pt
-
 optimization:
   lr: 0.03
   ts: 300
   regularization: diffusion
   reg_lambda: 0.75
   use_time_weight: false
+  fixed_timestep: null
   sigma: 10.0
   sigma_x0: 0.0001
   initial_type: smoothed
   noise_std: 0.0
   noise_type: gaussian
   missing_number: 0
-
 data:
   seismic_data_dir: dataset/OpenFWI/Seismic_Data/
   velocity_data_dir: dataset/OpenFWI/Velocity_Data/
-  batch_size: 34
-  data_pattern: "*.npy"
+  batch_size: 25
+  data_pattern: '*.npy'
   use_mmap: true
-  openfwi_families: null  # List of families to process (e.g., [CF, CV] or [CF.npy, CV.npy]), null/None to process all
-  sample_index: null  # Process only a specific sample index (0-indexed), null/None to process all samples
-
+  openfwi_families: null
+  sample_index: null
 experiment:
   name: openfwi_model_4
   results_dir: experiment/
@@ -54,5 +52,3 @@ experiment:
   log_interval: 10
   save_metrics: true
   random_seed: 8888
-
-

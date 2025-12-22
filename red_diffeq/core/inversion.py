@@ -12,14 +12,15 @@ from red_diffeq.core.losses import LossCalculator
 class InversionEngine:
 
     def __init__(self, diffusion_model, ssim_loss: SSIM, regularization: Optional[str] = None,
-                 use_time_weight: bool = False, sigma_x0: float = 0.0001):
+                 use_time_weight: bool = False, sigma_x0: float = 0.0001,
+                 fixed_timestep: int = None):
         self.diffusion_model = diffusion_model
         self.ssim_loss = ssim_loss
         self.device = diffusion_model.device
         self.sigma_x0 = sigma_x0  # Store for use in forward modeling
         self.regularization_method = RegularizationMethod(
             regularization, diffusion_model, use_time_weight=use_time_weight,
-            sigma_x0=sigma_x0
+            sigma_x0=sigma_x0, fixed_timestep=fixed_timestep
         )
 
     def optimize(self, mu: torch.Tensor, mu_true: torch.Tensor, y: torch.Tensor,
@@ -36,11 +37,12 @@ class InversionEngine:
 
         fwi_forward = fwi_forward.to(self.device)
         if regularization is not None:
-            use_time_weight = self.regularization_method.use_time_weight
-            sigma_x0 = self.regularization_method.sigma_x0
+            # Update regularization type while preserving other parameters
             self.regularization_method = RegularizationMethod(
-                regularization, self.diffusion_model, use_time_weight=use_time_weight,
-                sigma_x0=sigma_x0
+                regularization, self.diffusion_model,
+                use_time_weight=self.regularization_method.use_time_weight,
+                sigma_x0=self.regularization_method.sigma_x0,
+                fixed_timestep=self.regularization_method.fixed_timestep
             )
 
         batch_size = mu.shape[0]
@@ -60,43 +62,27 @@ class InversionEngine:
             'ssim': [], 'mae': [], 'rmse': []
         }
 
-        y = add_noise_to_seismic(y, noise_std, noise_type=noise_type)
+        # Create generator for reproducibility - one generator for all random operations
+        if random_seed is not None:
+            generator = torch.Generator(device=self.device)
+            generator.manual_seed(random_seed)
+        else:
+            generator = None
+
+        y = add_noise_to_seismic(y, noise_std, noise_type=noise_type, generator=generator)
         # Get both masked data and mask for proper loss computation
-        y, mask = missing_trace(y, missing_number, return_mask=True)
+        y, mask = missing_trace(y, missing_number, return_mask=True, generator=generator)
         y = y.to(self.device)
         mask = mask.to(self.device)
 
         pbar = tqdm(range(ts), desc='Optimizing', unit='step')
         for step in pbar:
-            current_seed = random_seed + step if random_seed is not None else None
-
             # Create x0_pred with small perturbation ONLY for diffusion regularization
             # This matches the original implementation exactly
             if regularization == 'diffusion':
-                # Get sigma_x0 from regularization method
-                sigma_x0 = getattr(self.regularization_method, 'sigma_x0', 0.0001)
-
-                # Handle seed for noise_x0 generation
-                # Use a different seed offset to ensure independence from regularization noise
-                if current_seed is not None:
-                    # Save current RNG state
-                    rng_state = torch.get_rng_state()
-                    if torch.cuda.is_available():
-                        cuda_rng_state = torch.cuda.get_rng_state()
-                    # Use offset seed for noise_x0 to ensure independence from regularization
-                    noise_x0_seed = current_seed + 1000000
-                    torch.manual_seed(noise_x0_seed)
-                    if torch.cuda.is_available():
-                        torch.cuda.manual_seed(noise_x0_seed)
-
-                noise_x0 = torch.randn_like(mu)
-                x0_pred = mu + sigma_x0 * noise_x0
-
-                if current_seed is not None:
-                    # Restore RNG state (regularization_loss will set its own seed)
-                    torch.set_rng_state(rng_state)
-                    if torch.cuda.is_available():
-                        torch.cuda.set_rng_state(cuda_rng_state)
+                # Generator automatically produces different values at each call
+                noise_x0 = torch.randn(mu.shape, generator=generator, device=mu.device, dtype=mu.dtype)
+                x0_pred = mu + self.regularization_method.sigma_x0 * noise_x0
             else:
                 # For non-diffusion regularization (TV, L2, or None), use mu directly
                 x0_pred = mu
@@ -109,7 +95,8 @@ class InversionEngine:
 
             # CRITICAL FIX: Pass x0_pred (not mu) to ensure consistent perturbation
             # between forward modeling and regularization
-            reg_loss = loss_calc.regularization_loss(x0_pred, seed=current_seed)
+            # Generator automatically produces different random values at each step
+            reg_loss = loss_calc.regularization_loss(x0_pred, generator=generator)
 
             total_loss = loss_calc.total_loss(loss_obs, reg_loss, reg_lambda)
 
@@ -135,7 +122,7 @@ class InversionEngine:
             pbar.set_postfix({
                 'MAE': mae.mean().item(),
                 'RMSE': rmse.mean().item(),
-                'SSIM': ssim.mean().item()
+                'SSIM': ssim.mean().item(),
             })
 
         final_results_per_model = []

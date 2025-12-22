@@ -1,6 +1,6 @@
 import math
 import torch
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from red_diffeq.utils.diffusion_utils import extract, diffusion_pad, diffusion_crop
 
 
@@ -29,10 +29,12 @@ def calculate_patches(width: int, height: int) -> Tuple[List[Tuple[int, int]], L
 
 class RED_DiffEq:
 
-    def __init__(self, diffusion_model, use_time_weight: bool = False, sigma_x0: float = 0.0001):
+    def __init__(self, diffusion_model, use_time_weight: bool = False, sigma_x0: float = 0.0001,
+                 fixed_timestep: int = None):
         self.diffusion_model = diffusion_model
         self.use_time_weight = use_time_weight
         self.sigma_x0 = sigma_x0
+        self.fixed_timestep = fixed_timestep
 
         image_size = getattr(diffusion_model, 'image_size', 72)
         self.input_size = image_size[0] if isinstance(image_size, (tuple, list)) else image_size
@@ -45,32 +47,20 @@ class RED_DiffEq:
         w_t = torch.sqrt((1.0 - gamma_t) / gamma_t)
         return tensor * w_t
 
-    def get_reg_loss(self, mu: torch.Tensor, seed: int = None) -> Tuple[torch.Tensor, torch.Tensor]:
+    def get_reg_loss(self, mu: torch.Tensor, generator: Optional[torch.Generator] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         batch_size = mu.shape[0]
 
-        if seed is not None:
-            # Save current RNG state
-            rng_state = torch.get_rng_state()
-            if torch.cuda.is_available():
-                cuda_rng_state = torch.cuda.get_rng_state()
+        # fixed_timestep acts as maximum timestep (upper bound for random sampling)
+        max_timestep = self.fixed_timestep if self.fixed_timestep is not None else self.diffusion_model.num_timesteps
 
-            # Set manual seed
-            torch.manual_seed(seed)
-            if torch.cuda.is_available():
-                torch.cuda.manual_seed(seed)
-
+        # Random timestep sampling - generator naturally produces different values per sample and per call
         time_tensor = torch.randint(
-            0, self.diffusion_model.num_timesteps,
-            (batch_size,), device=mu.device, dtype=torch.long
+            0, max_timestep,
+            (batch_size,), generator=generator, device=mu.device, dtype=torch.long
         )
 
-        noise = torch.randn_like(mu)
-
-        if seed is not None:
-            # Restore RNG state
-            torch.set_rng_state(rng_state)
-            if torch.cuda.is_available():
-                torch.cuda.set_rng_state(cuda_rng_state)
+        # Sample noise - generator naturally produces different values per sample and per call
+        noise = torch.randn(mu.shape, generator=generator, device=mu.device, dtype=mu.dtype)
 
         x0_pred = mu
 
@@ -92,7 +82,7 @@ class RED_DiffEq:
 
         return reg_per_model, gradient_per_model
 
-    def get_reg_loss_patched(self, mu: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def get_reg_loss_patched(self, mu: torch.Tensor, generator: Optional[torch.Generator] = None) -> Tuple[torch.Tensor, torch.Tensor]:
 
         mu_unpadded = diffusion_crop(mu)
         batch_size = mu_unpadded.shape[0]
@@ -101,12 +91,17 @@ class RED_DiffEq:
 
         patch_positions, overlaps = calculate_patches(width, height)
 
+        # fixed_timestep acts as maximum timestep (upper bound for random sampling)
+        max_timestep = self.fixed_timestep if self.fixed_timestep is not None else self.diffusion_model.num_timesteps
+
+        # Random timestep sampling - generator naturally produces different values per sample and per call
         time_tensor = torch.randint(
-            0, self.diffusion_model.num_timesteps,
-            (batch_size,), device=mu_unpadded.device, dtype=torch.long
+            0, max_timestep,
+            (batch_size,), generator=generator, device=mu_unpadded.device, dtype=torch.long
         )
 
-        noise = torch.randn_like(mu_unpadded)
+        # Sample noise - generator naturally produces different values per sample and per call
+        noise = torch.randn(mu_unpadded.shape, generator=generator, device=mu_unpadded.device, dtype=mu_unpadded.dtype)
 
         x0_pred = mu_unpadded
 

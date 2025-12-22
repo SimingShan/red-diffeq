@@ -35,6 +35,7 @@ def get_config():
     config.optimization.regularization = 'diffusion'
     config.optimization.reg_lambda = 0.75
     config.optimization.use_time_weight = False
+    config.optimization.fixed_timestep = None  # Maximum timestep for diffusion regularization (None = use model's max, e.g., 500 limits to [0, 500))
     config.optimization.sigma = 10.0
     config.optimization.sigma_x0 = 0.0001
     config.optimization.initial_type = 'smoothed'
