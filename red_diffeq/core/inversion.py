@@ -61,12 +61,12 @@ class InversionEngine:
             'ssim': [], 'mae': [], 'rmse': []
         }
 
-        # All random operations use the global RNG state (no generators passed)
+        # All random operations use the global RNG state (generator=None)
         # This ensures: (1) within-run randomness (each call advances RNG state)
         #              (2) cross-run reproducibility (same seed = same sequence)
-        y = add_noise_to_seismic(y, noise_std, noise_type=noise_type)
+        y = add_noise_to_seismic(y, noise_std, noise_type=noise_type, generator=None)
         # Get both masked data and mask for proper loss computation
-        y, mask = missing_trace(y, missing_number, return_mask=True)
+        y, mask = missing_trace(y, missing_number, return_mask=True, generator=None)
         y = y.to(self.device)
         mask = mask.to(self.device)
 
@@ -90,8 +90,8 @@ class InversionEngine:
 
             # CRITICAL FIX: Pass x0_pred (not mu) to ensure consistent perturbation
             # between forward modeling and regularization
-            # Uses global RNG state - each step gets different diffusion timestep and noise
-            reg_loss = loss_calc.regularization_loss(x0_pred)
+            # Uses global RNG state (generator=None) - each step gets different diffusion timestep and noise
+            reg_loss, time_tensor = loss_calc.regularization_loss(x0_pred, generator=None)
 
             total_loss = loss_calc.total_loss(loss_obs, reg_loss, reg_lambda)
 
@@ -114,11 +114,20 @@ class InversionEngine:
             metrics_history['mae'].append(mae.detach().cpu().numpy())
             metrics_history['rmse'].append(rmse.detach().cpu().numpy())
 
-            pbar.set_postfix({
+            # Prepare progress bar info
+            postfix_dict = {
                 'MAE': mae.mean().item(),
                 'RMSE': rmse.mean().item(),
                 'SSIM': ssim.mean().item(),
-            })
+            }
+            
+            # Add diffusion timestep if using diffusion regularization
+            if time_tensor is not None:
+                # Show mean timestep across batch (rounded to integer)
+                mean_t = time_tensor.float().mean().item()
+                postfix_dict['t'] = int(round(mean_t))
+            
+            pbar.set_postfix(postfix_dict)
 
         final_results_per_model = []
         num_timesteps = len(metrics_history['total_losses'])

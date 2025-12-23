@@ -40,7 +40,7 @@ class LossCalculator:
 
         return loss
 
-    def regularization_loss(self, mu: torch.Tensor, generator: Optional[torch.Generator] = None) -> torch.Tensor:
+    def regularization_loss(self, mu: torch.Tensor, generator: Optional[torch.Generator] = None):
         """Compute regularization loss.
 
         Args:
@@ -48,7 +48,7 @@ class LossCalculator:
             generator: Optional torch.Generator for deterministic noise sampling
 
         Returns:
-            Per-model regularization loss (batch_size,)
+            Tuple of (per-model regularization loss (batch_size,), diffusion timestep tensor or None)
         """
         return self.regularization_method.get_reg_loss(mu, generator=generator)
 

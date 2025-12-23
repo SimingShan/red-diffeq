@@ -18,7 +18,7 @@ class RegularizationMethod:
             self.red_diffeq = RED_DiffEq(diffusion_model, use_time_weight=use_time_weight,
                                           sigma_x0=sigma_x0, fixed_timestep=fixed_timestep)
 
-    def get_reg_loss(self, mu: torch.Tensor, generator: Optional[torch.Generator] = None) -> torch.Tensor:
+    def get_reg_loss(self, mu: torch.Tensor, generator: Optional[torch.Generator] = None):
         if self.regularization_type == 'diffusion':
             if self.diffusion_model is None:
                 raise ValueError("Diffusion model required for 'diffusion' regularization")
@@ -27,17 +27,23 @@ class RegularizationMethod:
             width = mu.shape[3]
 
             if width > self.red_diffeq.input_size or height > self.red_diffeq.input_size:
-                reg_loss, _ = self.red_diffeq.get_reg_loss_patched(mu, generator=generator)
+                reg_loss, _, time_tensor = self.red_diffeq.get_reg_loss_patched(mu, generator=generator)
             else:
-                reg_loss, _ = self.red_diffeq.get_reg_loss(mu, generator=generator)
+                reg_loss, _, time_tensor = self.red_diffeq.get_reg_loss(mu, generator=generator)
 
-            return reg_loss
+            return reg_loss, time_tensor
 
         elif self.regularization_type == 'l2':
-            return tikhonov_loss(mu)
+            reg_loss = tikhonov_loss(mu)
+            # Return None for timestep when not using diffusion
+            return reg_loss, None
 
         elif self.regularization_type == 'tv':
-            return total_variation_loss(mu)
+            reg_loss = total_variation_loss(mu)
+            # Return None for timestep when not using diffusion
+            return reg_loss, None
 
         else:
-            return torch.zeros(mu.shape[0], device=mu.device, dtype=mu.dtype)
+            reg_loss = torch.zeros(mu.shape[0], device=mu.device, dtype=mu.dtype)
+            # Return None for timestep when not using diffusion
+            return reg_loss, None

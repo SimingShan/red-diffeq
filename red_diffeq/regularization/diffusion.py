@@ -47,7 +47,7 @@ class RED_DiffEq:
         w_t = torch.sqrt((1.0 - gamma_t) / gamma_t)
         return tensor * w_t
 
-    def get_reg_loss(self, mu: torch.Tensor, generator: Optional[torch.Generator] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+    def get_reg_loss(self, mu: torch.Tensor, generator: Optional[torch.Generator] = None) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         batch_size = mu.shape[0]
 
         # fixed_timestep acts as maximum timestep (upper bound for random sampling)
@@ -80,9 +80,9 @@ class RED_DiffEq:
         gradient_per_model = gradient_field.view(batch_size, -1).mean(dim=1)
         reg_per_model = reg_field.view(batch_size, -1).mean(dim=1)
 
-        return reg_per_model, gradient_per_model
+        return reg_per_model, gradient_per_model, time_tensor
 
-    def get_reg_loss_patched(self, mu: torch.Tensor, generator: Optional[torch.Generator] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+    def get_reg_loss_patched(self, mu: torch.Tensor, generator: Optional[torch.Generator] = None) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
 
         mu_unpadded = diffusion_crop(mu)
         batch_size = mu_unpadded.shape[0]
@@ -152,7 +152,7 @@ class RED_DiffEq:
         gradient_per_model = gradient_field.view(batch_size, -1).mean(dim=1)
         reg_per_model = reg_field.view(batch_size, -1).mean(dim=1)
 
-        return reg_per_model, gradient_per_model
+        return reg_per_model, gradient_per_model, time_tensor
 
 
 class RED_DiffEq_POST_PROCESS:
