@@ -6,7 +6,9 @@ __pycache__/
 # ignore the diffefwi folder
 diffefwi/
 # ignore the diffusion_bench folder
-diffusion_bench/
+*.png
+*.csv
+*.sh
 .Python
 build/
 develop-eggs/
@@ -44,7 +46,6 @@ MANIFEST
 *.manifest
 *.spec
 /diffusion_models_sigmoid_20251219_115811
-/diffusion_bench
 run_ablation_study_full.sh
 run_ablation_marmousi.sh
 run_ablation_study_full.py
