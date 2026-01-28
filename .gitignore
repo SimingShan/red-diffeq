@@ -43,6 +43,7 @@ temp.ipynb
 MANIFEST
 *.pt
 *.ipynb
+!example/*.ipynb
 *.md
 # PyInstaller
 *.manifest
