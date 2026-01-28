@@ -32,7 +32,7 @@ class MetricsCalculator:
         mse_per_sample = torch.mean((vm_sample_unnorm - vm_data_unnorm) ** 2, dim=(1, 2, 3))
         rmse_per_sample = torch.sqrt(mse_per_sample)
 
-        # Compute SSIM on GPU (no CPU transfer needed!)
+        # Compute SSIM on GPU 
         # SSIM expects values in [0, 1] range
         vm_sample_01 = (vm_sample_unnorm + 1) / 2
         vm_data_01 = (vm_data_unnorm + 1) / 2

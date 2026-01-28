@@ -224,8 +224,9 @@ class DiffusionFWI:
         }
 
         y = add_noise_to_seismic(y, noise_std, noise_type=noise_type)
-        y = missing_trace(y, missing_number, return_mask=False)
+        y, mask = missing_trace(y, missing_number, return_mask=True)
         y = y.to(self.device)
+        mask = mask.to(self.device)
 
         current_model = mu
 
@@ -262,11 +263,16 @@ class DiffusionFWI:
                     predicted_seismic = fwi_forward(mu_opt)
 
                     # Data loss (original supports L2/cross-correlation/optimal transport at lines 238-253)
-                    loss_obs = F.l1_loss(
+                    # Apply mask to properly handle missing traces (fair comparison with other methods)
+                    loss = F.l1_loss(
                         y.float(),
                         predicted_seismic.float(),
                         reduction='none'
-                    ).mean(dim=tuple(range(1, len(y.shape))))
+                    )
+                    # Weighted loss: only compute on observed traces
+                    loss = loss * mask
+                    num_observed = mask.sum(dim=tuple(range(1, len(mask.shape)))).clamp(min=1.0)
+                    loss_obs = loss.sum(dim=tuple(range(1, len(loss.shape)))) / num_observed
 
                     loss_obs.sum().backward()
 
@@ -318,11 +324,15 @@ class DiffusionFWI:
             # Track metrics at each timestep
             with torch.no_grad():
                 predicted_seismic = fwi_forward(current_model)
-                loss_obs = F.l1_loss(
+                # Apply mask to properly handle missing traces
+                loss = F.l1_loss(
                     y.float(),
                     predicted_seismic.float(),
                     reduction='none'
-                ).mean(dim=tuple(range(1, len(y.shape))))
+                )
+                loss = loss * mask
+                num_observed = mask.sum(dim=tuple(range(1, len(mask.shape)))).clamp(min=1.0)
+                loss_obs = loss.sum(dim=tuple(range(1, len(loss.shape)))) / num_observed
 
                 mae, rmse, ssim = metrics_calc.calculate(current_model, mu_true)
 

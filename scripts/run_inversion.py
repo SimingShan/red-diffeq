@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 import sys
 from pathlib import Path
 
@@ -37,7 +35,7 @@ def setup_device() -> torch.device:
 
 
 def load_diffusion_model(config: ml_collections.ConfigDict, device: torch.device) -> GaussianDiffusion:
-    """Load diffusion model with Accelerator and mixed precision (matching old implementation)."""
+    """Load diffusion model with Accelerator and mixed precision."""
     model = Unet(
         dim=config.model.dim,
         dim_mults=config.model.dim_mults,
@@ -53,23 +51,15 @@ def load_diffusion_model(config: ml_collections.ConfigDict, device: torch.device
         objective=config.diffusion.objective,
     ).to(device)
 
-    # Use Accelerator with mixed precision (fp16) to match old implementation
-    # This may affect numerical precision and could explain noise sensitivity differences
     accelerator = Accelerator(
         split_batches=True,
         mixed_precision='fp16'
     )
     
-    # Create a dummy optimizer (Accelerator requires it, but we're not training)
     opt = Adam(diffusion.parameters(), lr=20, betas=(0.9, 0.99))
-    
-    # Prepare model and optimizer with accelerator
     diffusion, opt = accelerator.prepare(diffusion, opt)
-    
-    # Unwrap model (remove accelerator wrapper)
     diffusion = accelerator.unwrap_model(diffusion)
 
-    # Load pretrained weights
     model_path = Path(config.diffusion.model_path)
     if model_path.exists():
         checkpoint = torch.load(model_path, map_location=device)
@@ -196,10 +186,9 @@ def save_batch_results(
     vel_batch: torch.Tensor,
     output_dir: Path,
 ) -> None:
-    # mu_batch is already cropped (returned from optimize())
+
     mu_batch_np = mu_batch.detach().cpu().numpy()
     vel_batch_np = vel_batch.cpu().numpy()
-    # initial_model_batch is always padded (72×72 or 72×192), crop to original size
     initial_model_batch_np = initial_model_batch[:, :, 1:-1, 1:-1].detach().cpu().numpy()
 
     for i, model_idx in enumerate(range(batch_start, batch_end)):
@@ -221,13 +210,13 @@ def save_batch_results(
         }
 
         npz_path = output_dir / f"{model_idx}_results.npz"
-        np.savez(npz_path, **npz_data)
+        # Ensure the output directory exists and convert to absolute path string
+        # This prevents FileNotFoundError when working directory changes or paths are relative
+        npz_path.parent.mkdir(parents=True, exist_ok=True)
+        np.savez(str(npz_path.resolve()), **npz_data)
 
 
 def run_experiment(config: ml_collections.ConfigDict) -> None:
-    # CRITICAL: Set random seed FIRST, before any operations that might use randomness
-    # This ensures reproducibility: same seed = identical results across runs
-    # Within a run: each random operation advances the global RNG state, so values are random
     base_seed = config.experiment.random_seed
     if base_seed is not None:
         from red_diffeq.utils.seed_utils import set_seed
@@ -301,22 +290,18 @@ def run_experiment(config: ml_collections.ConfigDict) -> None:
                 print(f"Warning: sample_index {sample_index} is out of range [0, {num_models-1}]. Skipping {family_name}.")
                 continue
             print(f"Processing only sample {sample_index} (out of {num_models} samples)")
-            # Process only this one sample - set batch_start and batch_end to this sample
             batch_start = sample_index
             batch_end = sample_index + 1
             num_batches = 1
         else:
-            # Process all samples
             print(f"Number of models: {num_models}")
             print(f"Batch size: {config.data.batch_size}")
             num_batches = (num_models + config.data.batch_size - 1) // config.data.batch_size
 
         for batch_idx in tqdm(range(num_batches), desc="Batches"):
             if sample_index is None:
-                # Normal batching
                 batch_start = batch_idx * config.data.batch_size
                 batch_end = min(batch_start + config.data.batch_size, num_models)
-            # else: batch_start and batch_end are already set above
 
             mu_batch, results, initial_batch, vel_batch = process_batch(
                 batch_start,

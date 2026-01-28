@@ -83,21 +83,17 @@ def prepare_initial_model(v_true: torch.Tensor, initial_type: str = None, sigma:
     device = v_true.device
     v = v_true.clone()
 
-    # Convert to numpy for processing
     v_np = v.cpu().numpy()
     v_np = v_normalize(v_np)
 
     if initial_type == 'smoothed':
-        # Use scipy for exact consistency (only called once at start)
         v_blurred = gaussian_filter(v_np, sigma=sigma)
 
     elif initial_type == 'homogeneous':
-        # Use minimum of top row
         min_top_row = np.min(v_np[0, 0, 0, :])
         v_blurred = np.full_like(v_np, min_top_row)
 
     elif initial_type == 'linear':
-        # Create linear gradient with depth
         v_min = np.min(v_np)
         v_max = np.max(v_np)
         height = v_np.shape[2]
@@ -106,7 +102,6 @@ def prepare_initial_model(v_true: torch.Tensor, initial_type: str = None, sigma:
         v_blurred = np.tile(depth_gradient, (1, v_np.shape[3]))
         v_blurred = v_blurred.reshape(1, 1, height, -1)
 
-    # Convert back to tensor on original device
     v_blurred = torch.tensor(v_blurred, dtype=torch.float32, device=device)
 
     return v_blurred
@@ -147,15 +142,10 @@ def missing_trace(y: torch.Tensor, num_missing: int, return_mask: bool = True,
     y_missing = y.clone()
 
     for b in range(batch_size):
-        # CRITICAL FIX: Select missing receivers ONCE per batch
-        # These same receivers are missing for ALL sources (shots)
-        # This matches real seismic acquisition where a broken receiver
-        # is missing for all shots, not different receivers per shot
-        missing_indices = torch.randperm(num_traces, generator=generator, device=device)[:num_missing]
 
-        # Apply to ALL sources simultaneously (vectorized operation)
-        y_missing[b, :, :, missing_indices] = 0  # All sources at once
-        mask[b, :, :, missing_indices] = 0        # All sources at once
+        missing_indices = torch.randperm(num_traces, generator=generator, device=device)[:num_missing]
+        y_missing[b, :, :, missing_indices] = 0
+        mask[b, :, :, missing_indices] = 0
 
     if return_mask:
         return y_missing, mask

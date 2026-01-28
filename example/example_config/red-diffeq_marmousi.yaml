@@ -30,25 +30,26 @@ diffusion:
 optimization:
   lr: 0.03
   ts: 300
-  regularization: none
-  reg_lambda: 0.0
+  regularization: diffusion
+  reg_lambda: 0.75
   use_time_weight: false
   sigma: 20.0
   initial_type: smoothed
   noise_std: 0.0
   noise_type: gaussian
   missing_number: 0
+  sigma_x0: 0.0001
 
 data:
-  seismic_data_dir: dataset/Marmousi/Seismic_Data/
-  velocity_data_dir: dataset/Marmousi/Velocity_Data/
+  seismic_data_dir: example/example_dataset/example_marmousi/Seismic_Data/
+  velocity_data_dir: example/example_dataset/example_marmousi/Velocity_Data/
   batch_size: 1
   data_pattern: "*.npy"
   use_mmap: true
 
 experiment:
-  name: marmousi_baseline
-  results_dir: experiment/
+  name: marmousi_red_diffeq
+  results_dir: example/example_result/marmousi/
   save_intermediate: false
   log_interval: 10
   save_metrics: true

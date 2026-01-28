@@ -17,7 +17,7 @@ class InversionEngine:
         self.diffusion_model = diffusion_model
         self.ssim_loss = ssim_loss
         self.device = diffusion_model.device
-        self.sigma_x0 = sigma_x0  # Store for use in forward modeling
+        self.sigma_x0 = sigma_x0
         self.regularization_method = RegularizationMethod(
             regularization, diffusion_model, use_time_weight=use_time_weight,
             sigma_x0=sigma_x0, fixed_timestep=fixed_timestep
@@ -36,7 +36,6 @@ class InversionEngine:
 
         fwi_forward = fwi_forward.to(self.device)
         if regularization is not None:
-            # Update regularization type while preserving other parameters
             self.regularization_method = RegularizationMethod(
                 regularization, self.diffusion_model,
                 use_time_weight=self.regularization_method.use_time_weight,
@@ -61,36 +60,24 @@ class InversionEngine:
             'ssim': [], 'mae': [], 'rmse': []
         }
 
-        # All random operations use the global RNG state (generator=None)
-        # This ensures: (1) within-run randomness (each call advances RNG state)
-        #              (2) cross-run reproducibility (same seed = same sequence)
         y = add_noise_to_seismic(y, noise_std, noise_type=noise_type, generator=None)
-        # Get both masked data and mask for proper loss computation
         y, mask = missing_trace(y, missing_number, return_mask=True, generator=None)
         y = y.to(self.device)
         mask = mask.to(self.device)
 
         pbar = tqdm(range(ts), desc='Optimizing', unit='step')
         for step in pbar:
-            # Create x0_pred with small perturbation ONLY for diffusion regularization
-            # This matches the original implementation exactly
+
             if regularization == 'diffusion':
-                # Uses global RNG state - each step gets different noise
+
                 noise_x0 = torch.randn(mu.shape, device=mu.device, dtype=mu.dtype)
                 x0_pred = mu + self.regularization_method.sigma_x0 * noise_x0
             else:
-                # For non-diffusion regularization (TV, L2, or None), use mu directly
                 x0_pred = mu
 
-            # Use x0_pred for forward modeling
-            # mu is always padded (72×72 or 72×192), crop to original size for FWI
             predicted_seismic = fwi_forward(x0_pred[:, :, 1:-1, 1:-1])
-            # Pass mask to properly handle missing traces
             loss_obs = loss_calc.observation_loss(predicted_seismic, y, mask=mask)
 
-            # CRITICAL FIX: Pass x0_pred (not mu) to ensure consistent perturbation
-            # between forward modeling and regularization
-            # Uses global RNG state (generator=None) - each step gets different diffusion timestep and noise
             reg_loss, time_tensor = loss_calc.regularization_loss(x0_pred, generator=None)
 
             total_loss = loss_calc.total_loss(loss_obs, reg_loss, reg_lambda)
@@ -104,7 +91,6 @@ class InversionEngine:
 
             scheduler.step()
 
-            # Metrics calculated on original dimensions (crop padding)
             mae, rmse, ssim = metrics_calc.calculate(mu[:, :, 1:-1, 1:-1], mu_true)
 
             metrics_history['total_losses'].append(total_loss.detach().cpu().numpy())
@@ -114,16 +100,13 @@ class InversionEngine:
             metrics_history['mae'].append(mae.detach().cpu().numpy())
             metrics_history['rmse'].append(rmse.detach().cpu().numpy())
 
-            # Prepare progress bar info
             postfix_dict = {
                 'MAE': mae.mean().item(),
                 'RMSE': rmse.mean().item(),
                 'SSIM': ssim.mean().item(),
             }
             
-            # Add diffusion timestep if using diffusion regularization
             if time_tensor is not None:
-                # Show mean timestep across batch (rounded to integer)
                 mean_t = time_tensor.float().mean().item()
                 postfix_dict['t'] = int(round(mean_t))
             
@@ -142,6 +125,5 @@ class InversionEngine:
             }
             final_results_per_model.append(model_results)
 
-        # Return mu in original dimensions (crop padding: 72×72→70×70 or 72×192→70×190)
         mu_result = mu[:, :, 1:-1, 1:-1]
         return mu_result, final_results_per_model

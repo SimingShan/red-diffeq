@@ -73,7 +73,7 @@ def set_seed(seed: int, verbose: bool = True, allow_tf32: bool = False):
         torch.backends.cudnn.allow_tf32 = allow_tf32
 
     if verbose:
-        print(f"✅ Random seed set to: {seed}")
+        print(f"   - Random seed set to: {seed}")
         print(f"   - Python random: {seed}")
         print(f"   - NumPy: {seed}")
         print(f"   - PyTorch CPU: {seed}")

@@ -12,6 +12,8 @@ diffefwi/
 .Python
 build/
 develop-eggs/
+diffusion_bench_results/
+notebook_visualization/
 dist/
 downloads/
 eggs/
